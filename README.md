@@ -2,12 +2,6 @@
 
 In the ESIS project we are trying to put environmental indicators on a well-defined and reproducible basis. The *Imalys* software library is supposed to generate the remote sensing products defined for ESIS. The library provides tools to select, extract, transform and combine raster and vector data. Image quality, landscape diversity, change and different landuse types can be analyzed in time and space. Landuse borders can be delineated and typical landscape structures can be characterized by a self adjusting process.
 
-#######################################
-
-**Imalys is under development. In order to implement new possibilities, the syntax of the command chain had to be adapted. Please refer to the current version 0.3!**
-
-#######################################
-
 ___
 
 
@@ -37,13 +31,9 @@ The *Imalys* [binary files](binaries/README.md) need no installation. They can b
 
 *Imalys* is under development. The version 0.2 was focused on methods to select and extract appropriate images from large data collections as shipped by the providers and linking them to a seamless and high quality product for a freely selectable region. A time series over 40 years for the whole of Germany with approx. 50,000 image tiles is an example of this intention. Tools for change detection, outliers and trends will be the next step.
 
-###################################
-
 In version 0.3, the tasks of the *import* and *compile* tools have been changed. *Import* extracts data from archives. *Compile* has been expanded to become the central collection point for all geodata. *Compile* transfers data to the Imalys [process chain](documents/manual/Index.md), harmonizes geocorrection and pixel size and can limit the result to a selected ROI. The change means that process chains from version 0.2 are not always compatible with version 0.3. 
 
 All noticable changes are documented in the [changelog](CHANGELOG.md). The Imalys [manual](documents/manual/Index.md) contains a complete description of the use and syntax of all tools. 
-
-###################################
 
 ### Get involved
 
