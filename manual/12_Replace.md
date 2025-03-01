@@ -8,7 +8,7 @@ Varables can be given as list of different values, delimited by colons. If *Repl
 
 ------
 
-### Replace
+### Example
 
 **Replace locally defined variables**
 

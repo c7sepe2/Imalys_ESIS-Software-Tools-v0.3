@@ -49,9 +49,9 @@ features
 
 The size of the zones is calculated as the sum of all pixels covering the zone. The values are given as Hectares [ha] (100m × 100m). 
 
-​	![image-20240320120223601](../images/8_sellsize.png)	Sp: pixel size [m]; Sz: pixel per zone; 
+​Def: ![](../images/M8_cellsize.png) Range: [ 0 < cellsize ]
 
-Range: [ 0 < cellsize ]
+Sp: pixelsize [m]; Sz: pixel per zone; 
 
 ------
 
@@ -68,9 +68,9 @@ features
 
 The *dendrites* process returns the quotient between perimeter and size of single zones. Both values grow with larger zones but the size grows faster. Large zones will show lower values than smaller ones with the same shape.
 
-​	![image-20240320114514035](../images/8_dendrites)	vr: Result Value; pz: Perimeter (zone); sz: Size (zone)
+​Def: ![](../images/M8_dendrites) Range: [ 0 < dendrites ≤ 4 ]
 
-Range: [ 0 < dendrites ≤ 4 ]
+vr: Result Value; pz: Perimeter (zone); sz: Size (zone)
 
 ------
 
@@ -91,9 +91,9 @@ The *diffusion* process smoothes small-scale differences and emphasizes outstand
 
 The *diffusion* process is only controlled by the number of iterations (*diffusion = number*). Each iteration enlarges the region of contributing zones. The influence of distant zones on the central zone decreases with distance. Entries over 10 are allowed, but rarely have a visible effect. The process influences small *zones* much more than large ones, as *diffusion* only takes place at the boundaries between the *zones*.
 
-​	![image-20240320120444688](../images/8_diffusion.png)	a: attribute value; s: zone size; c: pixel contacts; i,j: zone indices; t: iterations (time)
+​Def: ![](../images/M8_diffusion.png) Range: [ as parameters above ]
 
-Range: [ as parameters above ]
+a: attribute value; s: zone size; c: pixel contacts; i,j: zone indices; t: iterations (time)
 
 ------
 
@@ -110,9 +110,9 @@ features
 
 The diversity between zones is calculated as the statistical deviation of all attributes between the central zone and all its neighbors. As the zones might differ considerably in size and shape the length of the common border was selected as a measure for the contribution of the peripheral zones to the final value. 
 
-​	![image-20240320115214090](../images/8_diversity.png)	vi: Pixel value; vn: Neighbor value; bp: Pixel boundaries
+​Def: ![](../images/M8_diversity.png) Range: [ 0 ≤ dendrites ]
 
-Range: [ 0 ≤ dendrites ]
+vi: Pixel value; vn: Neighbor value; bp: Pixel boundaries
 
 ------
 
@@ -129,9 +129,9 @@ features
 
 The *entropy* process returns the spectral diversity of all pixels within one zone. For multispectral images the diversity is calculated independently for each band and the first principal component of all diversities is taken as the final result. The entropy values are calculated using the Gauss's formula for deviation.
 
-​	![image-20240320113611345](../images/8_entropy.png)	dij: Density difference; I,j: neighbor pixels; pi, pj: frequency of pixel values “i” and “j”
+​Def: ![](../images/M8_entropy.png) Range: [ 0 ≤ entropy ]
 
-Range: [ 0 ≤ entropy ]
+dij: Density difference; I,j: neighbor pixels; pi, pj: frequency of pixel values “i” and “j”
 
 ------
 
@@ -172,9 +172,9 @@ features
 
 As the *texture* process does, *normal* returns the mean difference between all pixel pairs within an individual zone but in this case the difference is normalized by the mean brightness of the compared pixels. 
 
-​	![image-20240320114238721](../images/8_normal.png)	vi: pixel value; vj: neighbor pixel value; b: bands
+​Def: ![](../images/M8_normal.png) Range: [ 0 ≤ normal ≤ 1 ]
 
-Range: [ 0 ≤ normal ≤ 1 ]
+vi: pixel value; vj: neighbor pixel value; b: bands
 
 ------
 
@@ -191,9 +191,9 @@ features
 
 The *proportion* process returns the relation between the size of the central zone and all its neighbors. The result is calculated as relation between the size of the central zone and the mean size of its neighbors. As the size is given in a logarithmic scale, the “mean” is not an arithmetic but a geometric mean. Values around one indicate equally sized neighbor zones. 
 
-​	![image-20240523115837170](../images/8_proportion.png) si: Size, central zone; sj: Size, neighbor zone; n: number of neighbors
+​Def: ![](../images/M8_proportion.png) Range: [ 0 < proportion ]
 
-Range: [ 0 < proportion ]
+si: Size, central zone; sj: Size, neighbor zone; n: number of neighbors
 
 ------
 
@@ -210,9 +210,9 @@ features
 
 *Relation* is calculated as the relation between the number of neighbor zones and the perimeter of the central zone. Like *dendrites* also *relation* returns information about the shape and the connection of the zones. Zones with many connections may provide paths for animal travels and enhance diversity.
 
-​	![image-20240320115912653](../images/8_relation.png)	r: relation; c: number of neighbors; p: perimeter
+​Def: ![](../images/M8_relation.png) Range: [ relation < 1]
 
-Range: [ relation < 1]
+r: relation; c: number of neighbors; p: perimeter
 
 ------
 
@@ -244,9 +244,9 @@ features
 
 The *texture* process returns the mean difference between all pixel pairs within an individual zone. The process thus returns the “roughness” of the image. The *normal* process will return a brightness independent result.
 
-​	![image-20240320114020548](../images/8_texture.png)	v: pixel value; i,j: adjacent pixels; 
+​Def: ![](../images/M8_texture.png) Range: [ 0 ≤ texture ]
 
-Range: [ 0 ≤ texture ]
+v: pixel value; i,j: adjacent pixels; 
 
 ------
 

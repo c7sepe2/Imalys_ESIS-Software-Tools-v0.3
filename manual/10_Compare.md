@@ -27,7 +27,9 @@ compare
 
 The process compares the latest [mapping](9_Mapping.md) result with the *reference* by means of a rank correlation after Spearmann. The raster file must be a classification layer, the vector file must have appropriate attributes. A rank correlation is independent of the basic value distribution. Therefore it can be used for each set of data, even a mix of form and spectral features.
 
-​	![image-20240320133435426](../images/10_Rank.png)	r,s: item rank; i: item index; n: items count
+Def: ![](../images/M10_Rank.png)
+
+r,s: item rank; i: item index; n: items count
 
 ------
 

@@ -135,7 +135,9 @@ import
 
 Satellite images are provided with values that support easy storage and transportation. For image analysis it is strongly recommended to use reflectance (reflection) or radiation instead of raw values. The calibration parameters are part of the metadata of the image archives but sometimes they are difficult to find. Examples for most common sensors are given in the [tutorial](../tutorials). The calibration parameters are sensor dependent and may change between the different product levels of the provider. 
 
-​	![image-20240319141735792](../images/3_factor-offset.png)	R: Result value; v: Provided value; f: Factor; o: Offset
+![](../images/M3_factor-offset.png) 
+
+R: Result value; v: Provided value; f: Factor; o: Offset
 
 ------
 

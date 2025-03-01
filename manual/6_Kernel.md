@@ -68,7 +68,7 @@ kernel
 
 Rao’s diversity uses variance instead of texture to evaluate the spectral diversity of landscape structures. The variance is insensitive for the spatial distribution of the pixels within the kernel. 
 
-​	![image-20240320103330317](../images/6_entropy.png)	dkl: Density difference; k,l: neighbor pixels; pk, pl: frequency of pixel values “k” and “l”
+​Def: ![](../images/M6_entropy.png)	dkl: Density difference; k,l: neighbor pixels; pk, pl: frequency of pixel values “k” and “l”
 
 Range: [0 … positive value]
 
@@ -128,7 +128,7 @@ kernel
 
 The *inverse* process creates a new image with the Inverse Difference Moment (IDM) proposed by Haralik⁵. The result is particularly high in dark regions and low in bright regions. It can complement *texture* and has proved useful in the analysis of settlement structures. The *radius* of the kernel can be set as necessary.
 
-​	![image-20240320102944127](../images/6_inverse.png)	v: values; i,j: neighbor pixels; b: bands
+​Def: ![](../images/M6_inverse.png)	v: values; i,j: neighbor pixels; b: bands
 
 Range: [0 … 4] for one band
 
@@ -152,7 +152,7 @@ The Laplace process increases the image contrast. In particular edges are emphas
 
 *Imalys* implements the Laplace transformation as the difference between two Gaussian distributions with a different radius. The parameters *inner* and *outer* control the size (kernel radius) of the two distributions. Most like *radius* the kernel size is defined as the number of pixels between the center and the border of the kernel. 
 
-​	![image-20240320104658347](../images/6_laplace.png)	v: values; k: inner kernel; g: outer kernel; I,j: kernel indices
+Def: ![](../images/M6_laplace.png)	v: values; k: inner kernel; g: outer kernel; I,j: kernel indices
 
 Range: [negative value … positive value]
 
@@ -173,7 +173,7 @@ kernel
 
 The *lowpass* process reduces the local contrast of the image data according to the selected *radius*. *Lowpass* uses a kernel with a normalized Gaussian distribution. The kernel size can be selected freely. *Imalys* implements large kernels through an iterative process to significantly reduce the processing time.
 
-​	![image-20240320104318833](../images/6_LowPass.png)	v: image values; k: kernel values; i,j: kernel index
+​Def: ![](../images/M6_LowPass.png)	v: image values; k: kernel values; i,j: kernel index
 
 Range: [negative value … positive value]
 
@@ -194,7 +194,7 @@ kernel
 
 The normalized texture does the same as *texture* but with normalized brightness. Value differences in bright regions like industrial areas will be high even if the relative differences are low. The opposite is true for dark forests. 
 
-​	![image-20240320110003480](../images/6_normal.png)	vi: pixel value; vj: neighbor pixel value; b: bands
+Def: ![](../images/M6_normal.png)	vi: pixel value; vj: neighbor pixel value; b: bands
 
 Range: [0 … 4] for one band
 
@@ -215,7 +215,7 @@ kernel
 
 The *texture* process extracts the differences between each pixel and its neighbors within a small window (kernel) and stores the first principal component of all differences to a new layer. In this example the radius of 3 pixels creates a 7x7 pixels kernel.
 
-​	![image-20240320101917783](../images/6_texture.png)	v: pixel value; i,j: adjacent pixels
+​Def: ![](../images/M6_texture.png)	v: pixel value; i,j: adjacent pixels
 
 Range: [0 … positive value]
 

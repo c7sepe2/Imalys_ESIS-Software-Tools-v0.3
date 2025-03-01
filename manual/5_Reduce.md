@@ -60,9 +60,9 @@ reduce
 	retain = time
 ```
 
-*Brightness* uses the first principal component of all bands as a measure of the common brightness of the selected image. If the acquisition date is preserved by *retain = time*, the result consist of a time line with one band per acquisition date. 
+*Brightness* uses the first principal component of all bands as a measure of the common brightness of the selected image. If the acquisition date is preserved by *retain = time*, the result consist of a time line with one band per acquisition date.
 
-​	![image-20240319183231922](../images/5_brigthness.png.png)	v: values; i: items; 
+Def: ![](../images/M5_brigthness.png)	v: values; i: items; 
 
 Result: [0 … positive values]
 
@@ -167,7 +167,7 @@ reduce
 
 The *mean* process returns the arithmetic mean of all image bands provided. *Mean* is calculated for each pixel individually. If the *retain* option is used, a stack of multispectral images can be reduced either to one multispectral image or a time course of brightness bands (see *retain*).
 
-​	![image-20240319183835174](../images/5_mean.png)	v: values; i: items; n: item count
+Def: ![](../images/M5_mean.png)	v: values; i: items; n: item count
 
 Result: [negative values … positive values]
 
@@ -226,7 +226,7 @@ reduce
 
 The example returns the NIRV plant metabolism index using band 3 as red and band 4 as near infrared values. The band selection must be passed with *bands* and the band numbers as shown above.
 
-NIRV: ![image-20240319182841085](../images/5_NirV.png)	N: Near infrared value; R: Red band value
+Def: ![](../images/M5_NirV.png)	N: Near infrared value; R: Red band value
 
 Result: [0 … 1]
 
@@ -271,7 +271,7 @@ The example extracts the first *count* principal components from a n-dimensional
 
 The *principal* component rotation tries to extract the most significant image property (overall brightness) from the passed image, stores the result as a new band, deletes the result from the source and repeats the procedure with the remainder for *count* times. In many cases the information content of the source can be concentrated to only a few result bands. *Count* must be lower than the number of bands. 
 
-Def:	![image-20240319183231922](../images/5_brigthness.png.png)	v: values; i: items; iterated "count" times
+Def:	![](../images/M5_brigthness.png)	v: values; i: items; iterated "count" times
 
 Result: [0 … positive values]
 
@@ -311,7 +311,7 @@ reduce
 
 The *regression* process returns the regression of individual pixels for all bands in the source. *Regression* tries to use the temporal distance of the recordings from the time stamps at the end of the filenames. If the images are arranged with the [compile](4_Compile.md) module, the time stamps are added to the band names of the images. Otherwise an equal distance is assumed. Using the *retain = bands* option the process returns a multispectral image of regressions for each band.
 
-​	![image-20240319181602245](../images/5_regression.png)	t: time; v: values; i: items; n: item count
+Def: ![](../images/M5_regression.png)	t: time; v: values; i: items; n: item count
 
 Result: [negative values … positive values]
 
@@ -385,7 +385,7 @@ reduce
 
 The *variance* process determines the variance of individual pixels based on a standard distribution for all individual bands in the source image. If the *retain = bands* or the *retain = time* option is used (see *retain*) the result is a multiband image of variances. Otherwise the result is a single band of the variance of all bands.
 
-​	![image-20240323125742064](../images/5_variance.png)	v: values; i: items; n: item count
+Def: ![](../images/M5_variance.png)	v: values; i: items; n: item count
 
 Result: [0 … positive values]
 
