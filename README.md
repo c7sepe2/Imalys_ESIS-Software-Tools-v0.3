@@ -13,27 +13,27 @@ ___
 
 Most of the methods and analyses implemented in *Imalys* are also available with commercial software and/or open source solutions. The decisive factor for the *Imalys* concept was to bundle all necessary commands and parameters into one process that contains all sub-steps and (depending on the application) only requires location, time and resulting indicators as input. 
 
-*Imalys* was designed as a collection of building blocks (tools) to extract defined landscape properties (traits) from public available data. The whole process chain is controlled by predefined hooks and runs without manual interaction. The tools are interchangeable and can be rearranged for new tasks. *Imalys* is available as [source code](source/README.md) and as [executable](binaries/README.md) files. *Imalys* is designed to run under a server environment but can also be used on any PC. For detailed information please refer to our [tutorials](documents/tutorial/Index.md), the [manual](documents/manual/Index.md) or the [background documents](documents/background/README.md) .
+*Imalys* was designed as a collection of building blocks (tools) to extract defined landscape properties (traits) from public available data. The whole process chain is controlled by predefined hooks and runs without manual interaction. The tools are interchangeable and can be rearranged for new tasks. *Imalys* is available as [source code](source/README.md) and as [executable](binaries/README.md) files. *Imalys* is designed to run under a server environment but can also be used on any PC. For detailed information please refer to our [tutorials](tutorial/README.md), the [manual](manual/README.md) or the [background documents](background/README.md) .
 
 ### Get Started
 
-The easiest way to learn about *Imalys* is to run one of the [tutorials](documents/tutorial/Index.md). Copy and extract the [tutorial data](https://zenodo.org/records/11097359) to a place where you have writing permissions and follow the description. The tutorial includes all imalys tools and a stepwise description how to use them. The only thing you have to add is the [GDAL library](https://github.com/OSGeo/GDAL).
+The easiest way to learn about *Imalys* is to run one of the [tutorials](tutorial/README.md). Copy and extract the [tutorial data](https://zenodo.org/records/11097359) to a place where you have writing permissions and follow the description. The tutorial includes all imalys tools and a stepwise description how to use them. The only thing you have to add is the [GDAL library](https://github.com/OSGeo/GDAL).
 
 ### Installation
 
-The *Imalys* [binary files](binaries/README.md) need no installation. They can be simply copied to your */usr/local/bin* directory. To run *Imalys* the GDAL library must be available under your */usr/bin/* directory. The GDAL library can be obtained from [GitHub](https://github.com/OSGeo/GDAL). If you run Quantum-Gis the library is already installed. For details please refer to our [manual](documents/manual/Index.md).
+The *Imalys* [binary files](binaries/README.md) need no installation. They can be simply copied to your */usr/local/bin* directory. To run *Imalys* the GDAL library must be available under your */usr/bin/* directory. The GDAL library can be obtained from [GitHub](https://github.com/OSGeo/GDAL). If you run Quantum-Gis the library is already installed. For details please refer to our [manual](manual/README.md).
 
 ### Usage
 
-*Imalys* must be called with a shell or terminal. All necessary commands and parameters are passed by a single text file. Installation, commands and parameters are described in depth in our [manual](documents/manual/Index.md). A [tutorial](documents/tutorial/Index.md) provides examples of all processing steps and the combination of the *Imalys* tools. For expert users important algorithms are discussed in a [background](documents/background/README.md) document.
+*Imalys* must be called with a shell or terminal. All necessary commands and parameters are passed by a single text file. Installation, commands and parameters are described in depth in our [manual](manual/README.md). A [tutorial](tutorial/README.md) provides examples of all processing steps and the combination of the *Imalys* tools. For expert users important algorithms are discussed in a [background](background/README.md) document.
 
 ### Development
 
 *Imalys* is under development. The version 0.2 was focused on methods to select and extract appropriate images from large data collections as shipped by the providers and linking them to a seamless and high quality product for a freely selectable region. A time series over 40 years for the whole of Germany with approx. 50,000 image tiles is an example of this intention. Tools for change detection, outliers and trends will be the next step.
 
-In version 0.3, the tasks of the *import* and *compile* tools have been changed. *Import* extracts data from archives. *Compile* has been expanded to become the central collection point for all geodata. *Compile* transfers data to the Imalys [process chain](documents/manual/Index.md), harmonizes geocorrection and pixel size and can limit the result to a selected ROI. The change means that process chains from version 0.2 are not always compatible with version 0.3. 
+In version 0.3, the tasks of the *import* and *compile* tools have been changed. *Import* extracts data from archives. *Compile* has been expanded to become the central collection point for all geodata. *Compile* transfers data to the Imalys [process chain](manual/README.md), harmonizes geocorrection and pixel size and can limit the result to a selected ROI. The change means that process chains from version 0.2 are not always compatible with version 0.3. 
 
-All noticable changes are documented in the [changelog](CHANGELOG.md). The Imalys [manual](documents/manual/Index.md) contains a complete description of the use and syntax of all tools. 
+All noticable changes are documented in the [changelog](CHANGELOG.md). The Imalys [manual](manual/Index.md) contains a complete description of the use and syntax of all tools. 
 
 ### Get involved
 
