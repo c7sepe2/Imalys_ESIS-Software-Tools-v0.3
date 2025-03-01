@@ -2,7 +2,7 @@
 
 The tutorial is a step by step instruction how to install the tools and how to use them. Each lesson comes with an introduction, definitions and example code. The example code is ready to process the [example data]() that are available at *Zenodo*. 
 
-![](../images/tools.png) under construction
+![](../images/tools.svg) under construction
 
 **[	EcoSystem Integrity Service](0_ESIS.md)**
 
