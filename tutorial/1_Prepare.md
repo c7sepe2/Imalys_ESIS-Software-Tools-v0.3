@@ -20,7 +20,7 @@ The examples at the tutorial will refer to this data set. If you prefer to insta
 
 ### 1b Install executable files
 
-All commands and processes of *Imalys* are compiled into one executable program *xImalys*. *xImalys* does not need to be installed. It is sufficient to copy [xImalys](../../binaries/x_Imalys) to your *usr/local/bin* directory. You will need administrative rights to copy it. The *usr/local/bin* directory is not included into the package system.
+All commands and processes of *Imalys* are compiled into one executable program *xImalys*. *xImalys* does not need to be installed. It is sufficient to copy [xImalys](../../executables/x_Imalys) to your *usr/local/bin* directory. You will need administrative rights to copy it. The *usr/local/bin* directory is not included into the package system.
 
  - download *xImalys* from the *binaries* folder
  - copy *xImalys* to your /usr/local/bin directory
