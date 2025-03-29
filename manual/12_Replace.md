@@ -1,6 +1,8 @@
-## Replace	
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
-**replace variables given at the process chain**
+------
+
+## *Replace* variables of the process chain
 
 To manage long process chains and to repeat identical processes with different parameters *Replace* allows to use variables within the process chain. Variables must be declared at the very beginning of the process chain. The declaration is formatted as "variable-ID = value". The ID consists of a “$” sign followed by one figure from 1 to 9. The value can be each expression including figures and strings.
 
@@ -45,6 +47,4 @@ home
 
 The second example shows how to repeat the first example for 4 different cities. The variables have to be extended to variable lists, everything else remains unchanged. The whole process is repeated for 4 times. Each run uses the values at the same position in the lists. The number of entries for a variable list is not limited. 
 
------
-
-[Previous](11_Export.md)	–	[Index](README.md)	–	[Next](0_Execute.md)
+[Top](12_Replace.md)

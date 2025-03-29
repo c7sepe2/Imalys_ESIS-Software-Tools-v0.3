@@ -1,8 +1,10 @@
-## Compare	
-
-**validate and / or assign classes**
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
+
+------
+
+## *Compare:* validate and / or assign classes
 
 The self adjusting classification [mapping](9_Mapping.md) is driven by image features. Real classes are not necessarily defined by their appearance. *Compare* allows to evaluate if and up to witch degree real classes can be detected by image features. The main result is a confusion matrix for false and true detection and denotation. The result can be used to assign class names and get a confidence level to the statistical outcome of the [mapping](9_Mapping.md) process. The comparison is done by a rank correlation that will be independent from the value distribution.
 
@@ -12,9 +14,7 @@ The standard result of *compare* command is an accuracy table. Using the *contro
 
 ------
 
-### Reference (Process)
-
-**Selects a class reference (raster or vector)**
+### Reference: Select a class reference
 
 ```
 IMALYS [compare]
@@ -33,9 +33,7 @@ r,s: item rank; i: item index; n: items count
 
 ------
 
-### Raster (Process)
-
-**Stores a vectorized classification as a raster layer**
+### *Raster:* Store a vectorized classification as a raster layer
 
 ```
 IMALYS [compare]
@@ -50,9 +48,7 @@ Vector layers can not be compared directly. The *raster* option allows to save t
 
 ------
 
-### Fieldname (Parameter)
-
-**Marks a field in the reference table that contains class names**
+### *Fieldname:* Mark a field in the reference table that contains class names
 
 ```
 IMALYS [compare]
@@ -67,9 +63,7 @@ The parameter *fieldname* marks the equally called column in the reference data 
 
 ------
 
-### Assign (Parameter)
-
-**Assign class names from a reference classification**
+### *Assign* a class names from a reference classification
 
 ```
 IMALYS [compare]
@@ -85,9 +79,7 @@ The option *assign* transfers the class names of the references to the results o
 
 ------
 
-### Control
-
-**Stores additional accuracy information**
+### *Control:* Store additional accuracy information
 
 ```
 IMALYS [compare]
@@ -101,6 +93,4 @@ compare
 
 The *control* option creates an image *accuracy* at the working directory where only accurate classification results are depicted, a table *combination* with all links between reference and classification and a table *specifity* with more accuracy measures. 
 
------
-
-[Previous](9_Mapping.md)	–	[Index](README.md)	–	[Next](11_Export.md)
+[Top](10_Compare.md)

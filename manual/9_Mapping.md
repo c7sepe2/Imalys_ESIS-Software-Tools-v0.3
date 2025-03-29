@@ -1,24 +1,24 @@
-## Mapping
-
-**classify image features and create image objects**
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
 
-*Imalys* provides three mapping alternatives. A fully self adjusting classification based on pixel features will be performed if a standard image is *selected*. The same can be done with [zones](7_Zones.md), if the result of the *zones* process (*index*) is selected as input. If the *fabric* option is added, the zones will be further combined to objects that are characterized by the patterns of different *zones*.
+------
+
+## *Mapping:* Classify image features and create image objects
+
+*Imalys* provides three mapping alternatives. A fully self adjusting classification based on pixel features will be performed if a standard image is *selected*. The same can be done with [zones](7_Zones.md), if the result of the *zones* process at the working directory (*index*) is selected as input (see [tutorial](../tutorial/5_Mapping.md)). If the *fabric* option is added, the zones will be further combined to *objects* that are characterized by the patterns of different *zones*.
 
 In all cases the classification result is a raster layer called "mapping" with class IDs as values and random colors given as a color palette. 
 
-With *select = compile* all bands of the image [compile](4_Compile.md) at the working directory are classified. The process depends on the Euclidean distance of the values in the n-dimensional feature space. As all bands are treated as equal important, the value distribution of the different bands should be similar. For images calibrated to reflection ([import](3_Import.md)) this is the case. Other bands like elevation or humidity will not fit. The *equalize* process can be used to scale all bands to the same value range.
+With *select = compile* the image [compile](4_Compile.md) at the working directory is classified. The process depends on the Euclidean distance of the values in the n-dimensional feature space. As all bands are treated as equal important, the value distribution of the different bands should be similar. For images calibrated to reflection ([import](3_Import.md)) this is the case. Other bands like elevation or humidity will not fit. The *equalize* process can be used to scale all bands to the same value range (see [background·mapping](../background/2_Mapping.md)).
 
 With *select = index* the result of the most recent [zones](7_Zones.md) and [features](8_Features.md) process is assigned to the *mapping*. In this case *zones* and their *features* are classified instead of pixels. Spectral classification with *zones* instead of pixels are superior in most cases because *zones* follow natural boundaries and generalize pixel values. The typical “pepper and salt” effect of pixel orientated classes will not appear. Moreover the mapping of *zones* can include size, shape and context features of the zones. As the values of these features differ largely from reflection the image values should be scaled with the *equalize* process in accordance to the expected results.
 
-The *fabric* process uses the classified zones to find and characterize spatial patterns (*objects*) among them (Appendix E: Background). The spatial distribution of *zones* and their features over the whole image is analyzed and most common patterns are extracted as *object* classes. This includes the typical neighborhood of *zones*. Many real objects are characterized more by their internal structure and their environment but by their spectral composition. *Objects* can model his composition. *Objects* are mostly larger than *zones*. The object definition does not restrict the size of *objects*. On the other hand large single *zones* like waterbodies can be classified as *objects*.
+The *fabric* process uses the classified zones to find and characterize spatial patterns (*objects*) among them (see see [background·objects](../background/3_Objects.md)). The spatial distribution of *zones* and their features over the whole image is analyzed and most common patterns are extracted as *object* classes. This includes the typical neighborhood of *zones*. Many real objects are characterized more by their internal structure and their environment but by their spectral composition. *Objects* can model his composition. The object definition does not restrict the size of *objects*. On the other hand large single *zones* like waterbodies can be classified as *objects*.
 
 ------
 
-### Select (Process)
-
-**Mark an image or zones to be classified**
+### *Select* an image or zones to be classified
 
 ```
 IMALYS [mapping]
@@ -50,10 +50,9 @@ If the *zones* should be further combined to *objects*, the *fabric* parameter m
 
 ------
 
-### Equalize (Process)
+### *Equalize:* scale all attribute values to the range [0…1]
 
-**scales all attribute values to the range [0 … 1]**
-**only together with zones**
+**only together with zones!**
 
 ```
 IMALYS [mapping]
@@ -63,13 +62,11 @@ mapping
 	equalize = 3
 ```
 
-The *equalize* process scales all attributes of the most recent [features](8_Features.md) process to the same value range. Attributes with very different values can then be meaningfully compared. The input is given in standard deviations to fill the fixed value range [0 … 1]. *Equalize = 1* (one standard deviation) is the weakest binding, inputs around *3* bind 99.9% of all values to the same interval. *Equalize* does not permanently change the attributes.
+The attributes (features) of zones can show very different values ranges. If they should be meaningfully compared by a classification process, the values must be normalized. The *equalize* option scales all attributes of the current [features](8_Features.md) command to the same value range. The input is given in standard deviations to fill the fixed value range [0 … 1]. *Equalize = 1* (one standard deviation) is the weakest binding, inputs around *3* bind 99.9% of all values to the same interval. *Equalize* does not permanently change the attributes.
 
 ------
 
-### Classes (Parameter)
-
-**Specifies the number of classes or objects to be created**
+### *Classes:* Specify the number of classes or objects to be created
 
 ```
 IMALYS [mapping]
@@ -84,9 +81,7 @@ The number of classes at the result is set by *classes*. The number should not b
 
 ------
 
-### Samples (Parameter)
-
-**Specifies the number of samples to train the classifier**
+### *Samples:* Specify the number of samples to train the classifier
 
 ```
 IMALYS [mapping]
@@ -101,9 +96,7 @@ To find clusters in the feature space *mapping* uses *samples* from the image da
 
 ------
 
-### Values (Parameter)
-
-**Show classification result with “natural” colors**
+### *Values:* Show the classification result with “natural” colors
 
 ```
 IMALYS [mapping]
@@ -117,6 +110,4 @@ mapping
 
 The primary classification result is a raster layer (*mapping*) with class IDs as values and random colors given as a color palette. The *values* option will transfer the random colors to “natural” colors derived from the class definition. The default colors are the first three bands of the classified image.
 
-------
-
-[Previous](8_Features.md)	–	[Index](README.md)	–	[Next](10_Compare.md)
+[Top](9_Mapping.md)

@@ -1,10 +1,12 @@
-## Kernel	
-
-**extract context features of each pixel using a moving window** 
-
-*Kernel* module collect values in the neighborhood of each pixel and combine them to a new value. The “neighborhood” is a small square window (kernel) that is moved over the whole image. The *execute* command can be repeated as often as necessary to apply different processes to one image. The results will be named as the process. If a multiband image is assigned, the process uses common brightness of all bands.
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
+
+------
+
+## *Kernel:* Extract context features of each pixel using a moving window
+
+The *kernel* command collects values in the neighborhood of each pixel and combines them to a new value. The “neighborhood” is a small square window (kernel) that is moved over the whole image. The *execute* command can be repeated as often as necessary to apply different processes to one image. The results will be named as the process. If a multiband image is assigned, the process uses the common brightness of all bands.
 
 The processes *texture*, *normal*, *inverse*, *deviation* *entropy* and *roughness* return information about the local diversity of the landscape. *Texture* collects the mean difference between all pixel neighbors within the kernel. The *normal* process does the same but with normalized values that makes the result independent of illumination or object brightness. The *inverse* process returns the Inverse Difference Moment (IDM⁵) to analyze dark regions. 
 
@@ -18,9 +20,7 @@ Kernel processes are always accompanied by a soft focus effect. The [features](8
 
 ------
 
-### Select (Command)
-
-**Mark an image at the working directory to be processed**
+### *Select:* Mark an image at the working directory to be processed
 
 ```
 IMALYS [kernel]
@@ -34,9 +34,7 @@ All kernel processes need one image from the working directory as input. Assign 
 
 ------
 
-### Execute (Command)
-
-**select a kernel process**
+### *Execute:* Select a kernel process
 
 ```
 IMALYS [kernel]
@@ -53,9 +51,7 @@ kernel
 
 ------
 
-### Deviation (Process)
-
-**Rao‘s diversity based on pixels**
+### *Deviation:* Return Rao‘s diversity based on pixels
 
 ```
 IMALYS [kernel]
@@ -76,9 +72,7 @@ Range: [0 … positive value]
 
 ------
 
-### Elevation (Process)
-
-**Extract slope, exposition and shade from an elevation model**
+### *Elevation:* Extract slope, exposition and shade from an elevation model
 
 ```
 IMALYS [kernel]
@@ -95,9 +89,7 @@ Range: [0 … 1] for each band
 
 ------
 
-### Hillshade (Process)
-
-**Superimpose image data with shading from an elevation model**
+### *Hillshade:* Superimpose image data with shading from an elevation model
 
 ```
 IMALYS [kernel]
@@ -113,9 +105,7 @@ Range: [negative value … positive value]
 
 ------
 
-### Inverse (Process)
-
-**Inverse Difference Moment (IDM)**
+### *Inverse:* Return the Inverse Difference Moment (IDM)
 
 ```
 IMALYS [kernel]
@@ -134,9 +124,7 @@ Range: [0 … 4] for one band
 
 ------
 
-### Laplace (Process)
-
-**Enhance the local contrast**
+### *Laplace:* Enhance the local contrast
 
 ```
 IMALYS [kernel]
@@ -158,9 +146,7 @@ Range: [negative value … positive value]
 
 ------
 
-### Lowpass (Process)
-
-**Reduce the local contrast**
+### *Lowpass:* Reduce the local contrast
 
 ```
 IMALYS [kernel]
@@ -179,9 +165,7 @@ Range: [negative value … positive value]
 
 ------
 
-### Normal (Process)
-
-**Extract a density normalized texture of each pixels environment**
+### *Normal:* Return the density normalized texture of each pixels environment
 
 ```
 IMALYS [kernel]
@@ -200,9 +184,7 @@ Range: [0 … 4] for one band
 
 ------
 
-### Texture (Process)
-
-**Extract the local texture of each pixels environment**
+### *Texture:* Return the local texture of each pixels environment
 
 ```
 IMALYS [kernel]
@@ -221,9 +203,9 @@ Range: [0 … positive value]
 
 ------
 
-### Inner, Outer (Parameter)
+### *Inner, Outer:* Select the two radius sizes of the *Laplace* procedure
 
-**Select the two radius sizes of the *laplace* procedure**
+**Only with *Laplace***
 
 ```
 IMALYS [kernel]
@@ -239,9 +221,7 @@ The Laplace process increases the image contrast. The size of the emphasized str
 
 ------
 
-### Radius (Parameter)
-
-**Select the kernel size for all procedures except *laplace* **
+### *Radius:* Select the kernel size for all procedures except *Laplace*
 
 ```
 IMALYS [kernel]
@@ -257,9 +237,7 @@ The kernel radius is defined as the number of pixels between the center and the 
 
 ------
 
-### Target (Command)
-
-**Rename the result of the last command**
+### *Target:* Rename the result of the last command
 
 ```
 IMALYS [kernel]
@@ -274,11 +252,8 @@ The *target* command renames the result of the last process. The new name is res
 
 ------
 
-[Previous](5_Reduce.md)	–	[Index](README.md)	–	[Next](7_Zones.md)
-
-------
-
 ### Citation
 
 [5] Haralik, R.M.; Shanmugam K.; Its’hak D.: Textural Features for Image Classification, IEEE Transaction on Systems, Man and Cybernetics, Vol. SMC-3, No. 6, Nov. 1973, pp610-621
 
+[Top](6_Kernel.md)

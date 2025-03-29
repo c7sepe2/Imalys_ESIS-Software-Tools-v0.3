@@ -1,10 +1,12 @@
-## Zones
-
-**Delineate homogeneous image elements**
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
 
-The *zones* command delineates a seamless network of image segments that completely covers the image. The process tries to minimize the pixel diversity within each zone. Zones were introduced to provide a structural basis for landscape diversity and other structural features. They allow an easy transformation of raster images to a vector format like maps. Zones are stored in an internal format to support rapid processing. Use the [Export](11_Export.md) command to get attributed polygons. 
+------
+
+## *Zones:* Delineate homogeneous image elements
+
+The *zones* command delineates a seamless network of image segments that completely covers the image. The process tries to minimize the pixel diversity within each zone. Zones were introduced to provide a structural basis for landscape diversity and other structural features. They allow an easy transformation of raster images to a vector format like maps. Zones are stored in an internal format to support rapid processing. Use the [Export](11_Export.md) command to get attributed polygons. The implementation of the *zones* follows the GEOBIA paradigm (Blaschke¹). 
 
 The *zones* process can be controlled by the *size* and the *bonds* parameter. Technically the zones are created by an iteration that can be continued until the diversity within the zones can not be reduced further by combining zones. The resulting zones can be rather large. The *size* parameter will terminate the process when the mean of all zones has reached the input. The *bonds* parameter controls the size differences of the resulting zones.
 
@@ -12,9 +14,7 @@ Larger *zones* are always the combination of smaller *zones*. The number of inpu
 
 ------
 
-### Select (Process)
-
-**Mark an image as basis of the zones process**
+### *Select* an image as basis of the zones process
 
 ```
 IMALYS [zones]
@@ -28,9 +28,7 @@ The *zones* module needs an image stored at the working directory. Use *select* 
 
 ------
 
-### Size (Parameter)
-
-**Select the mean size of the zones**
+### *Size:* Select the mean size of the zones
 
 ```
 IMALYS [zones]
@@ -45,9 +43,7 @@ The density of zones is mainly controlled by the *size* parameter. The input is 
 
 ------
 
-### Bonds (Parameter)
-
-**Select a '*low*', '*medium*', '*high*' or '*accurate*' size bounding**
+### *Bonds:* Select the variety of zones sizes
 
 ```
 IMALYS [zones]
@@ -62,9 +58,7 @@ Depending on the landscape structure, individual *zones* of very different sizes
 
 ------
 
-### Sieve (Process)
-
-**Merge small zones with larger ones**
+### *Sieve:* Merge small zones with larger ones
 
 ```
 IMALYS [zones]
@@ -78,6 +72,8 @@ zones
 
 Very small zones like single pixels or short pixel rows may not be desired. The parameter *sieve* allows to merge small zones with larger ones. The passed number is interpreted as accepted pixels within the zone. `[sieve = 1]` will erase single pixels, `[sieve = 2]` will erase pixel pairs and so on. As dot shaped zones show more internal boundaries than a linear arrangement the process prefers narrow shaped zones. This process might need repeated calls.
 
------
+------
 
-[Previous](6_Kernel.md)	–	[Index](README.md)	–	[Next](8_Features.md)
+(1) Thomas Blaschke,T. et al: Geographic Object-Based Image Analysis – Towards a new paradigm: ISPRS Journal of Photogrammetry and Remote Sensing 87 (2014) 180–191, http://dx.doi.org/10.1016/j.isprsjprs.2013.09.014
+
+[Top](7_Zones.md)

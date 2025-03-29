@@ -1,28 +1,28 @@
-## Features
-
-**Create zone attributes from size, shape and pixel statistics**
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
 
-During [zones](7_Zones.md) creation only the boundaries of the individual *zones* are recorded. The *features* process can add an attribute table to characterize the different spectral and morphological features of the *zones*. Each call of the *features* process will reset the whole attribute table. Technically all features are stored in an internal format for rapid processing. Use the [export](11_Export.md) command to get attributed polygons.
+------
+
+## *Features:* Create zone attributes from size, shape and pixel statistics
+
+During [zones](7_Zones.md) creation only the boundaries of the individual *zones* are recorded. The *features* process can add an attribute table to characterize the different spectral and morphological features of the *zones*. Each call of the *features* process will reset the whole attribute table. At the working directory, zones are stored as a raster image (*index*) and all features in an internal format (*index.bit*) for rapid processing. Use the [export](11_Export.md) command to get attributed polygons.
 
 *Select* will assign spectral features to the zones. Spectral features will always be the mean of all pixels within one zone. The process allows only one input image. Other images must be stacked beforehand with [compile](4_Compile.md) and passed as a stack. 
 
 *Execute* is used to add a couple of morphological and texture features. *Execute* can be repeated as often as necessary. 
 
-*Entropy* calculates Rao’s Entropy or ß-Diversity using [zones](7_Zones.md) instead of a kernel. Textural features like *texture* or *normal* compare only adjacent pixels and return the “roughness” of the image whereas *entropy* compares all pixels within a given region (3) (5). Regular pattern will show a high roughness but their diversity might be comparably low. Usually the region is given as a moving window or kernel. *Zones* provide an alternative that is defined by regional image properties. The *texture* and the *normal* process for *zones* are also restricted to the boundaries of the *zones*.
+*Entropy* calculates Rao’s Entropy or ß-Diversity [using zones](../backgrond/1_Delineate.md) instead of a kernel. Textural features like *texture* or *normal* compare only adjacent pixels and return the “roughness” of the image whereas *entropy* compares all pixels within a given region. Regular pattern like a chessboard will show a high roughness but their diversity might be comparably low. Usually the region is given as a moving window or kernel. *Zones* provide an alternative that is defined by regional image properties. The *texture* and the *normal* process for *zones* are also restricted to the boundaries of the *zones*.
 
 *Dendrites*, *proportion* and *relation* add morphological features of the *zones*. *Dendrites* looks at single *zones*, *proportion* compares the size of adjacent *zones* and *relation* returns an indicator for spatial diversity of the *zones*. All of them are designed to be independent of the absolute size of the *zones*, as the absolute size can be selected freely. As *dendrites* depends on perimeter and size of the *zones*, the results can not be compared between different images.
 
-*Diversity* mimics the spectral diversity at pixel scale for *zones*. As *zones* differ in size, shape and shared edges the diversity is not a simple mean but is calculated from the number of shared edges. For multispectral images the deviation of the different bands is calculated independently and the principal component of all deviations is taken as the final value. 
+*Diversity* mimics the spectral diversity at pixel scale for *zones*. As *zones* differ in size, shape and shared edges the diversity is not a simple mean but is calculated from the number of shared edges. For multispectral images the deviation of the different bands is calculated independently and the principal component of all deviations is taken as the final value. *Entropy* on pixel level and *diversity* on zone's level are both based on deviation but are calculated on very different scales. As diversity is strongly dependent on scaling the comparison between both might be interesting.
 
 *Diffusion* emphasizes local maxima and minima of all *features*. The algorithm mimics a diffusion through membranes. During the process, *features* “migrate” into the neighboring zone like soluble substances and combine with existing "concentrations". The intensity of the diffusion depends on the length of the common boundaries, the concentration difference and the selected number of iterations. The size of the [zones](7_Zones.md) provides the stock of "soluble substance".
 
 ------
 
-### Append (Parameter)
-
-**Add new featurs to an existing attribute table**
+### *Append* new features to an existing attribute table
 
 ```
 IMALYS [features]
@@ -36,9 +36,7 @@ features
 
 ------
 
-### Cellsize (Process)
-
-**Size of the zones given as [ha]**
+### *Cellsize:* Size of the zones given as [ha]
 
 ```
 IMALYS [features]
@@ -55,9 +53,7 @@ Sp: pixelsize [m]; Sz: pixel per zone;
 
 ------
 
-### Dendrites (Process)
-
-**Quotient of zone perimeter and cellsize**
+### *Dendrites:* Quotient of the perimeter and the size of the zones
 
 ```
 IMALYS [features]
@@ -68,15 +64,13 @@ features
 
 The *dendrites* process returns the quotient between perimeter and size of single zones. Both values grow with larger zones but the size grows faster. Large zones will show lower values than smaller ones with the same shape.
 
-​Def: ![](../images/M8_dendrites) Range: [ 0 < dendrites ≤ 4 ]
+​Def: ![](../images/M8_dendrites.png) Range: [ 0 < dendrites ≤ 4 ]
 
 vr: Result Value; pz: Perimeter (zone); sz: Size (zone)
 
 ------
 
-### Diffusion (Process)
-
-**Emphasize local maxima and minima for all features**
+### *Diffusion:* Emphasize local maxima and minima for all features
 
 ```
 IMALYS [features]
@@ -97,9 +91,7 @@ a: attribute value; s: zone size; c: pixel contacts; i,j: zone indices; t: itera
 
 ------
 
-### Diversity (Process)
-
-**Diversity of the central zone and all neighbors**
+### *Diversity* of the central zone and all neighbors
 
 ```
 IMALYS [features]
@@ -116,9 +108,7 @@ vi: Pixel value; vn: Neighbor value; bp: Pixel boundaries
 
 ------
 
-### Entropy (Process)
-
-**Pixel diversity following Rao’s proposal**`
+### *Entropy:* Pixel diversity following Rao’s proposal
 
 ```
 IMALYS [features]
@@ -135,9 +125,7 @@ dij: Density difference; I,j: neighbor pixels; pi, pj: frequency of pixel values
 
 ------
 
-### Execute (Process)
-
-**Add geometry features as attributes**
+### *Execute:* Add geometry features as attributes
 
 ```
 IMALYS [features]
@@ -159,9 +147,7 @@ Currently four different *features* are defined to describe the geometry of the 
 
 ------
 
-### Normal (Process)
-
-**Normalized pixel texture for individual zones**
+### *Normal:* Normalized pixel texture for individual zones
 
 ```
 IMALYS [features]
@@ -178,9 +164,7 @@ vi: pixel value; vj: neighbor pixel value; b: bands
 
 ------
 
-### Proportion (Process)
-
-**Size diversity of the central zone and all neighbors**
+### *Proportion:* Size diversity of the central zone and all neighbors
 
 ```
 IMALYS [features]
@@ -197,9 +181,7 @@ si: Size, central zone; sj: Size, neighbor zone; n: number of neighbors
 
 ------
 
-### Relation (Process)
-
-**Quotient of neighbors and perimeter of one zone**
+### *Relation:* Quotient of neighbors and perimeter of the zones
 
 ```
 IMALYS [features]
@@ -216,9 +198,7 @@ r: relation; c: number of neighbors; p: perimeter
 
 ------
 
-### Select (Process)
-
-**Assign spectral features as zone attributes**
+### *Select:* Assign spectral features as zone attributes
 
 ```
 IMALYS [features]
@@ -231,9 +211,7 @@ The *select* process adds all spectral features of the selected image to the att
 
 ------
 
-### Texture (Process)
-
-**Pixel texture for individual zones**
+### *Texture:* Pixel texture for individual zones
 
 ```
 IMALYS [features]
@@ -250,9 +228,7 @@ v: pixel value; i,j: adjacent pixels;
 
 ------
 
-### Values (Process)
-
-**Raster representation of zones with attributes**
+### *Values:* Convert all zones and their attributes to an raster image
 
 ```
 IMALYS [features]
@@ -264,6 +240,4 @@ features
 
 The *values* process creates a multi band raster image from all attributes of the zones polygons. *Values* mainly serves as a control feature. 
 
------
-
-[Previous](7_Zones.md)	–	[Index](README.md)	–	[Next](9_Mapping.md)
+[Top](8_Features.md)

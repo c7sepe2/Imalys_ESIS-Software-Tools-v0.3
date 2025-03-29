@@ -1,6 +1,12 @@
-## Import	
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
-**Select, extract, calibrate and clip images from archives**
+[TOC]
+
+------
+
+## *Import:* Select, extract, calibrate and clip images from compressed archives
+
+Image data providers such as NASA and ESA store raw data in compressed archives. *Import* includes all the necessary tools to select and extract images from any collection of archives to the working directory. The image format is converted to the ENVI convention. 
 
 ```
 IMALYS [import]
@@ -9,21 +15,17 @@ import
 	database = ~/ESIS/archives/bonds.csv
 	frame = ~/ESIS/frames/c7106.gpkg
 	period = 20220501 - 20220731
-	quality = 0.9
+	quality = 0.7
 	bands = _B2, _B3, _B4, _B5, _B6, _B7
 	factor = 2.75e-5
 	offset = -0.2
 ```
 
-Image data providers such as NASA and ESA provide raw data in compressed archives. *Import* provides all the necessary tools to select and extract images from any collection of archives to the working directory. The image format is converted to the ENVI convention. 
-
 Archives can be selected using a *database* (see [catalog](2_Catalog.md)) for a quick selection or individual using the *select* command. *Database* or *select* is mandatory. The *frame*, *quality*, *bands*, *factor* and *offset* parameters are used to qualify the selection and prepare the imported result. *Frame* cuts the result to the passed boundaries. *Quality* rejects any image quality below the passed limit. *Bands* extracts only the passed bands. *Factor* and *offset* calibrate the raw values to a calibrated value like reflectance or radiation.
 
 ------
 
-### Database
-
-**Select an image archive collection database**
+### *Database:* Select an image collection database
 
 ```
 IMALYS [import]
@@ -37,9 +39,7 @@ import
 
 ------
 
-### Frame
-
-**Cut out parts of the images**
+### *Frame:* Cut out parts of the images
 
 ```
 IMALYS [import]
@@ -54,9 +54,7 @@ Satellite images are provided in partly overlapping tiles. *Frame* selects all t
 
 ------
 
-### Period
-
-**Select a time interval for image acquisition**
+### *Period:* Select a time interval for image acquisition
 
 ```
 IMALYS [import]
@@ -72,9 +70,7 @@ Period selects year, month and day of the image acquisition. The *period* must b
 
 ------
 
-### Quality
-
-**Apply a quality mask to reject images**
+### *Quality:* Apply a quality mask to reject images
 
 ```
 IMALYS [import]
@@ -83,19 +79,17 @@ import
 	database = ~/ESIS/archives/bonds.csv
 	frame = ~/ESIS/frames/c7106.gpkg
 	period = 20220501 - 20220731
-	quality = 0.9
+	quality = 0.7
 	...
 ```
 
-The *quality* parameter defines the lowest partition of undisturbed pixels in the passed *frame*. Quality must be passed as a figure between 0 and 1. Most of the public remote sensing images are shipped with a quality mask. This mask is used to cut out image disturbances. *Import* uses the quality mask to reject images with more errors than the given limit.
+The *quality* parameter defines the lowest partition of undisturbed pixels in the passed *frame*. Quality must be passed as a figure between 0 and 1. Most of the public remote sensing images are shipped with a quality mask. This mask is used to cut out image disturbances. *Import* uses the quality mask to reject images with more dropouts than the given limit.
 
-If individual images have to be used, the quality should be close to the maximum (1.0). If enough images from the same season are available, images with up to 50% errors can be combined into a single image with average values (see [reduce](5_Reduce.md)). The result is the most frequent value of each pixel. In many cases it is preferable to a single image.
+If individual images have to be used, the quality should be close to the maximum (1.0). If enough images from the same season are available, images with up to 50% errors (*quality = 0.5*) can be combined into a single image (see [reduce](5_Reduce.md)). The result is the most frequent value of each pixel. In many cases it is preferable to a single image.
 
 ------
 
-### Bands
-
-**Select bands to be extracted from the archive**
+### *Bands:* Select bands to be extracted from the archive
 
 ```
 IMALYS [import]
@@ -104,7 +98,7 @@ import
 	database = ~/ESIS/archives/bonds.csv
 	frame = ~/ESIS/frames/c7106.gpkg
 	period = 20220501 - 20220731
-	quality = 0.9
+	quality = 0.7
 	bands = _B2, _B3, _B4, _B5, _B6, _B7
 	...
 ```
@@ -113,9 +107,7 @@ import
 
 ------
 
-### Factor, Offset
-
-**Calibrate raw image data to a defined product**
+### *Factor, Offset:* Calibrate raw image data to a defined product
 
 ```
 IMALYS [import]
@@ -124,14 +116,11 @@ import
 	database = ~/ESIS/archives/bonds.csv
 	frame = ~/ESIS/frames/c7106.gpkg
 	period = 20220501 - 20220731
-	quality = 0.9
+	quality = 0.7
 	bands = _B2, _B3, _B4, _B5, _B6, _B7
 	factor = 2.75e-5
 	offset = -0.2
 ```
-
-`factor = »positive figure«`
-`offset = »figure«`
 
 Satellite images are provided with values that support easy storage and transportation. For image analysis it is strongly recommended to use reflectance (reflection) or radiation instead of raw values. The calibration parameters are part of the metadata of the image archives but sometimes they are difficult to find. Examples for most common sensors are given in the [tutorial](../tutorials). The calibration parameters are sensor dependent and may change between the different product levels of the provider. 
 
@@ -141,9 +130,7 @@ R: Result value; v: Provided value; f: Factor; o: Offset
 
 ------
 
-### Select
-
-**Select image archives by a filename (mask)**
+### *Select:* Select image archives by a filename (mask)
 
 ```
 IMALYS [import]
@@ -155,6 +142,4 @@ import
 
 *Select* extracts image data from a compressed archive to the working directory. The complete path of the archive must be passed. Select can be repeated as often as necessary.
 
-------
-
-[Previous](2_Catalog.md)	–	[Index](README.md)	–	[Next](4_Compile.md)
+[Top](3_Import.md)

@@ -1,10 +1,12 @@
-## Reduce	
-
-**reduce image dimension by pixel based processing**
-
-The *reduce* module summarizes all processes that reduce the number of bands in an image. Use *select* to select an image from the working directory. The *execute* parameter selects one of the processes. Some of them need additional parameters. *Target* can be used to rename the result. The default is named as the used process.
+**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 [TOC]
+
+------
+
+## *Reduce:* reduce the image dimension by a pixel based processing
+
+The *reduce* module summarizes all processes that reduce the number of bands in an image. The *select* parameter selects an image from the working directory. The *execute* parameter selects one of the processes. Some of them need additional parameters. *Target* can be used to rename the result. The default is named as the used process.
 
 *Reduce* includes 17 different processes. The *mean*, *medium*, *range*, *minimum* and *maximum* processes are calculated as expected. They can be used for quality enhancement. The *bestof* process is a mixture of them that tries to select the most reliable combination of several images. Using *retain = bands* the result of each band is calculated separately. *Calculate* and *formula* allow free band arithmetics. The vegetation indices  *NIRV*, *NDVI*, *EVI* and *LAI* are proxies for biomass and mainly the metabolism rate of green plants. The statistical processes *variance* and *regression* return the expected values. *Weight* returns the sum of all bands.
 
@@ -14,9 +16,7 @@ The *reduce* module summarizes all processes that reduce the number of bands in 
 
 ---
 
-### Bands (Parameter) #
-
-**Band selection under NIRV, NDVI, EVI, LAI**
+### *Bands:* Band selection under *NIRV, NDVI, EVI, LAI*
 
 ```
 IMALYS [reduce]
@@ -31,9 +31,7 @@ For the vegetation indices *NIRV, NDVI, EVI* or *LAI*, the consecutive band numb
 
 ------
 
-### Bestof (Process) #
-
-**Automatically choose the most appropriate generalization**
+### *Bestof:* Choose the most appropriate generalization automatically
 
 ```
 IMALYS [reduce]
@@ -47,9 +45,7 @@ The process returns an optimized image from one or more (multispectral) images w
 
 ---
 
-### Brightness (Process) #
-
-**First principal component of all bands**
+### *Brightness:* Return the first principal component of all bands
 
 ```
 IMALYS [reduce]
@@ -70,16 +66,16 @@ The process will convert negative values into positive ones.
 
 ------
 
-### Calculate (Process) #
+### *Calculate:* Return pixel values based on a formula
 
-**Band arithmetic (+, -, *, /, <, >)** 
+**Operators: | + | – | * | / | < | > |**
 
 ```
 IMALYS [reduce]
 …
 reduce
 	select = compile
-	excute = calculate
+	execute = calculate
 	formula = B3 / B1 – 0.45
 ```
 
@@ -89,9 +85,9 @@ reduce
 
 ---
 
-### Count (Parameter) #
+### *Count:* Image dimensions after principal component rotation
 
-**Image dimensions after principal component rotation**
+**Only with *principal***
 
 ```
 IMALYS [reduce]
@@ -106,7 +102,7 @@ The *count* parameter restricts the *principal* component rotation to *count* st
 
 ---
 
-### Execute (Command) #
+### *Execute:* Select a *reduce* process
 
 ```
 IMALYS [reduce]
@@ -120,9 +116,11 @@ reduce
 
 ------
 
-### Formula (Command) #
+### *Formula:* Pass an arithmetic expression
 
-**Operators (+, -, *, /, <, >) and band IDs (B1, B2, …) under calculate**
+**Only under *calculate***
+
+**Operators: | + | – | * | / | < | > |**
 
 ```
 IMALYS [reduce]
@@ -137,9 +135,7 @@ reduce
 
 ------
 
-### Maximum (Process) #
-
-**Highest value of all pixel in an image stack**
+### *Maximum:* Return the highest value of all bands
 
 ```
 IMALYS [reduce]
@@ -149,13 +145,11 @@ reduce
 	execute = maximum
 ```
 
-The *maximum* process returns the highest value of all bands in a layer stack. *Maximum* is calculated for each pixel individually. Nodata pixels are ignored. 
+The *maximum* process returns the highest value of all bands in the *selected* image. *Maximum* is calculated for each pixel individually. Nodata pixels are ignored. 
 
 ------
 
-### Mean (Process) #
-
-**Arithmetic mean of all bands**
+### *Mean:* Return the arithmetic mean of all bands
 
 ```
 IMALYS [reduce]
@@ -165,7 +159,7 @@ reduce
 	execute = mean
 ```
 
-The *mean* process returns the arithmetic mean of all image bands provided. *Mean* is calculated for each pixel individually. If the *retain* option is used, a stack of multispectral images can be reduced either to one multispectral image or a time course of brightness bands (see *retain*).
+The *mean* process returns the arithmetic mean of all bands in the *selected* image. *Mean* is calculated for each pixel individually. If the *retain* option is used, a stack of multispectral images can be reduced either to one multispectral image or a time course of brightness bands (see *retain*).
 
 Def: ![](../images/M5_mean.png)	v: values; i: items; n: item count
 
@@ -173,9 +167,7 @@ Result: [negative values … positive values]
 
 ---
 
-### Median (Process) #
-
-**Most common value for each pixel from a stack of bands**
+### *Median:* Return the most common value of all bands
 
 ```
 IMALYS [reduce]
@@ -186,15 +178,13 @@ reduce
 	retain = bands
 ```
 
-The *median* is defined as the value in the middle of a sorted list and reflects the most common value of each pixel in a stack of bands or images. The calculation is repeated for each pixel individually. If the *retain* option is used (as above) a stack of multispectral images is reduced to one multispectral image of most common values for each band. The *retain = time* option will return a multiband image with one *brightness* layer for each acquisition date.
+The *median* process returns the *median* of all bands in the *selected* image. The *median* is defined as the value in the middle of a sorted list and reflects the most common value of each pixel in a stack of bands or images. The calculation is repeated for each pixel individually. If the *retain* option is used (as above) a stack of multispectral images is reduced to one multispectral image of most common values for each band. The *retain = time* option will return a multiband image with one *brightness* layer for each acquisition date.
 
 The *median* process can mask rare values. Clouds or smoke will disappear if more than the half of all pixels show undisturbed values.
 
 ------
 
-### Minimum (Process) #
-
-**Lowest value of all pixels in an image stack**
+### *Minimum:* Return the lowest value of all bands
 
 ```
 IMALYS [reduce]
@@ -204,11 +194,11 @@ reduce
 	execute = minimum
 ```
 
-The minimum process returns the lowest value of each pixel in a layer stack.  *Minimum* is calculated for each pixel individually. Nodata pixels are ignored. 
+The *minimum* process returns the lowest value of all bands in the *selected* image. *Minimum* is calculated for each pixel individually. Nodata pixels are ignored. 
 
 ---
 
-### NDVI, NIRV, EVI, LAI (Process) #
+### *NDVI, NIRV, EVI, LAI:* Return a vegetation index
 
 **Normalized vegetation index (NDVI)**
 **Near infrared vegetation index (NIRV)**
@@ -238,9 +228,7 @@ Most vegetation indices are calculated as the normalized difference between the 
 
 ------
 
-### Overlay (Process) #
-
-**Overwrite values in a layer stack**
+### *Overlay:* Overwrite values in a layer stack
 
 ```
 IMALYS [reduce]
@@ -250,13 +238,11 @@ reduce
 	execute = overlay
 ```
 
-Overlay superimposes the transferred bands in the given order. The last band has the highest priority. Gaps (NoData) remain empty until a band contains valid values. 
+Overlay superimposes the *selected* images or bands in the given order. The last band has the highest priority. Gaps (NoData) remain empty until a band contains valid values. 
 
 ---
 
-### Principal (Process) #
-
-**Principal component rotation**
+### *Principal:* Calculate a principal component rotation
 
 ```
 IMALYS [reduce]
@@ -269,17 +255,17 @@ reduce
 
 The example extracts the first *count* principal components from a n-dimensional image. 
 
-The *principal* component rotation tries to extract the most significant image property (overall brightness) from the passed image, stores the result as a new band, deletes the result from the source and repeats the procedure with the remainder for *count* times. In many cases the information content of the source can be concentrated to only a few result bands. *Count* must be lower than the number of bands. 
-
-Def:	![](../images/M5_brigthness.png)	v: values; i: items; iterated "count" times
+The *principal* component rotation tries to extract the most significant image property (see *brightness*) from the passed images, stores the result as a new band, deletes the result from the source and repeats the procedure with the remainder for *count* times. In many cases the information content of the source can be concentrated to only a few result bands. *Count* must be lower than the number of bands. 
 
 Result: [0 … positive values]
 
----
+------
 
-### Range (Process) #
+### *Quality:* Create an quality assessment layer
 
-**Absolute difference between the highest and the lowest value**
+------
+
+### *Range:* Return the difference between the highest and the lowest value
 
 ```
 IMALYS [reduce]
@@ -289,7 +275,7 @@ reduce
 	execute = range
 ```
 
-*Range* returns the difference between the highest and lowest value for each pixel in a layer stack. The result is always positive. 
+*Range* returns the absolute difference between the highest and lowest value for each band in the *selected* image. *Range* is calculated for each pixel individually. The result is always positive. 
 
 Def: [highest value – lowest value]
 
@@ -297,9 +283,7 @@ Result: [0 … positive values]
 
 ------
 
-### Regression (Process) #
-
-**Regression based on standard deviation**
+### *Regression:* Calculate the univariate linear regression
 
 ```
 IMALYS [reduce]
@@ -309,7 +293,7 @@ reduce
 	execute = regression
 ```
 
-The *regression* process returns the regression of individual pixels for all bands in the source. *Regression* tries to use the temporal distance of the recordings from the time stamps at the end of the filenames. If the images are arranged with the [compile](4_Compile.md) module, the time stamps are added to the band names of the images. Otherwise an equal distance is assumed. Using the *retain = bands* option the process returns a multispectral image of regressions for each band.
+The *regression* process returns the linear regression of individual pixels for all bands in the *selected* image. *Regression* tries to use the temporal distance of the recordings from the time stamps at the end of the filenames. If the images are arranged with the [compile](4_Compile.md) command, the time stamps are added to the band names of the images. Otherwise an equal distance is assumed. Using the *retain = bands* option the process returns a multispectral image of regressions for each band.
 
 Def: ![](../images/M5_regression.png)	t: time; v: values; i: items; n: item count
 
@@ -319,9 +303,7 @@ Since not all image formats register the acquisition date, the date [as YYYYMMDD
 
 ---
 
-### Retain (Command) #
-
-**decide if spectral or temporal characteristics are preserved**
+### *Retain:* Decide if spectral or temporal characteristics are preserved
 
 ```
 IMALYS [reduce]
@@ -332,15 +314,17 @@ reduce
 	retain = »time | bands«
 ```
 
-*Retain* can be used with each process under *reduce* except the *principal* component rotation. If *retain* is not used, *reduce* combines all selected bands to one result band. If a stack of multispectral images is selected, *retain = time* generates a multispectral image with one band per acquisition date. The resulting bands reflect the result of the selected process for each acquisition date. *Retain = bands* instead combines all selected images to one multispectral image with all bands of the source images. The selected process is executed for each band separately. 
+*Retain* can be used with each process under *reduce* except the *principal* component rotation. If *retain* is not used, *reduce* combines all selected bands to one result band. 
 
-»process under reduce« must be exchanged by a defined process name like *regression*. *retain=time* or *retain=bands* are alternatives. Retain will only work properly if the selected images are combined with the [compile](4_Compile.md) module. 
+If a stack of multispectral images is selected, *retain = time* generates a multispectral image with one band per acquisition date. The resulting bands reflect the result of the selected process for each acquisition date. *Retain = bands* instead combines all selected images to one multispectral image with all bands of the source images. The selected process is executed for each band separately. 
+
+Retain will only work properly if the selected images are combined with the [compile](4_Compile.md) command. 
+
+»process under reduce« must be exchanged by a defined process name like *regression*. 
 
 ---
 
-### Select (Command) #
-
-**Mark an image of the working directory to be processed**
+### *Select* an image of the working directory to be processed
 
 ```
 IMALYS [reduce]
@@ -350,13 +334,13 @@ reduce
 	execute = »processes under reduce«
 ```
 
-All processes under reduce need one multiband image as input. Different bands or images should be combined with the [compile](4_Compile.md) module. [Compile](4_Compile.md) checks image properties and adds the required metadata. »process under reduce« must be exchanged by a defined process name like *regression*. 
+All processes under reduce need one multiband image as input. Different bands or images should be combined beforehand with the [compile](4_Compile.md) command. [Compile](4_Compile.md) checks image properties and adds the required metadata. 
+
+»process under reduce« must be exchanged by a defined process name like *regression*. 
 
 ------
 
-### Target (Command) #
-
-**Rename the result of the last process**
+### *Target:* Rename the result of the last process
 
 ```
 IMALYS [reduce]
@@ -367,13 +351,15 @@ reduce
 	target = »filename«
 ```
 
-The *target* option renames the result of the last process. The new name is restricted to the working directory and needs no path. If several processes (*execute =*) are called together, only the last result will be modified. Choose the [export](11_Export.md) command to store one or more results at a different place.  »process under reduce« must be exchanged by a defined process name like *regression*. »filename« must be exchanged by the new name.
+The *target* option renames the result of the last process. The new name is restricted to the working directory and needs no pathname. If several processes (*execute =*) are called together, only the last result will be modified. Choose the [export](11_Export.md) command to store one or more results at a different place.
+
+»process under reduce« must be exchanged by a defined process name like *regression*.
+
+»filename« must be exchanged by the new name.
 
 ---
 
-### Variance (Process) #
-
-**Variance based on standard deviation**
+### *Variance:* Return the variance based on a standard deviation
 
 ```
 IMALYS [reduce]
@@ -383,7 +369,7 @@ reduce
 	execute = variance
 ```
 
-The *variance* process determines the variance of individual pixels based on a standard distribution for all individual bands in the source image. If the *retain = bands* or the *retain = time* option is used (see *retain*) the result is a multiband image of variances. Otherwise the result is a single band of the variance of all bands.
+The *variance* process calculates the variance of all bands in the *selected* image based on a standard distribution. Each pixel is calculated individually. If the *retain = bands* or the *retain = time* option is used (see *retain*) the result is a multiband image of variances. Otherwise the result is a single band of the variance for all bands.
 
 Def: ![](../images/M5_variance.png)	v: values; i: items; n: item count
 
@@ -391,9 +377,7 @@ Result: [0 … positive values]
 
 ------
 
-### Weight (Process) #
-
-**Global sum of all bands in the layer stack**
+### *Weight:* Return the global sum of all bands
 
 ```
 IMALYS [reduce]
@@ -403,8 +387,6 @@ reduce
 	execute = weight
 ```
 
-*Weight* returns the sum of all values from all bands of the layer stack for each pixel. Unlike *brightness*, *weight* sums arithmetically. Negative values reduce the result.
+*Weight* returns the sum of all pixel values from all bands of the layer stack for each pixel. Unlike *brightness*, *weight* sums arithmetically. Negative values reduce the result.
 
----
-
-[Previous](4_Compile.md)	–	[Index](README.md)	–	[Next](6_Kernel.md)
+[Top](5_Reduce.md)
