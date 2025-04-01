@@ -6,6 +6,14 @@
 
 ![](../images/tools.png)under construction
 
-- [**Delineate:**](1_Delineate.md) image segments (→zones) of pixels with homogeneous features
-- [**Mapping:**](2_Mapping.md) Classify pixels or →zones according to their spectral and spatial properties
-- [**Objects:**](3_Objects.md) Create and classify specific patterns of different zones
+- [**Import:**](B_Import.md) Extract images of a selected place and time from compressed archives
+
+- [**Compile:**](B_Compile.md) Prepare different images for processing with *Imalys* tools
+
+- [**Delineate:**](B_Delineate.md) image segments zones of pixels with homogeneous features
+
+- [**Mapping:**](B_Mapping.md) Classify pixels or zones according to their spectral and spatial properties
+
+- [**Objects:**](B_Objects.md) Create and classify specific patterns of different zones
+
+- [**Replace:**](B_Replace.md) Use variables and iterate a process chain
