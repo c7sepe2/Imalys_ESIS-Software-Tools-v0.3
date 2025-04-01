@@ -4,7 +4,7 @@
 
 ## 2 Mapping
 
-- [Pixels, Zones, Objects](B_Mapping.md#Pixels,-Zones,-Objects)
+- [Pixels, Zones, Objects](B_Mapping.md#Pixels-Zones-Objects)
 - [Feature Space](B_Mapping.md#Feature-Space)
 - [Zones and Features](B_Mapping.md#Zones-and-Features)
 - [Time as an attribute](B_Mapping.md#Time-as-an-attribute)
@@ -13,7 +13,7 @@
 
 ------
 
-### Pixels, Zones, Objects
+### Pixels Zones Objects
 
 Images of the earth’s surface are structured. Pixels with almost the same spectral combination are not randomly distributed but form clusters and sometimes regular patterns. The spectral combination of each image can be classified using the [mapping](../manual/9_Mapping.md) command. 
 
@@ -71,4 +71,4 @@ Since the *object* class definition only depends on different frequencies, each 
 
 ------
 
-[Top](B_Mapping.md#Pixels,-Zones,-Objects)
+[Top](B_Mapping.md#Pixels-Zones-Objects)
