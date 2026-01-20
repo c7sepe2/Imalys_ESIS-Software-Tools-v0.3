@@ -4,15 +4,13 @@
 
 ------
 
-## *Kernel:* Extract context features of each pixel using a moving window
+## *Kernel:* Extract local features of each pixel using a moving window
 
-The *kernel* command collects values in the neighborhood of each pixel and combines them to a new value. The “neighborhood” is a small square window (kernel) that is moved over the whole image. The *execute* command can be repeated as often as necessary to apply different processes to one image. The results will be named as the process. If a multiband image is assigned, the process uses the common brightness of all bands.
+The *kernel* command collects values in the neighborhood of each pixel and combines them to a new value. The “neighborhood” is a small square window (kernel) that is moved over the whole image. The *execute* command can be repeated as often as necessary to apply different processes to one image. The results will be named as the process. If a multiband image is assigned, the process uses the common [brightness](5_Reduce.md) of all bands.
 
-The processes *texture*, *normal*, *inverse*, *deviation* *entropy* and *roughness* return information about the local diversity of the landscape. *Texture* collects the mean difference between all pixel neighbors within the kernel. The *normal* process does the same but with normalized values that makes the result independent of illumination or object brightness. The *inverse* process returns the Inverse Difference Moment (IDM⁵) to analyze dark regions. 
+The processes *texture*, *normal*, *inverse*, *entropy* and *laplace* return information about the local diversity of the landscape. *Texture* collects the mean difference between all pixel neighbors within the kernel and returns something like the roughness of the image. The *normal* process does the same but with normalized values that makes the result independent of illumination or object brightness. The *inverse* process returns the Inverse Difference Moment (5) to analyze dark regions. 
 
-Unlike the “roughness” of an image, Rao’s *entropy* returns the diversity of all pixel values within the given kernel. The result is insensitive to the spatial distribution of the pixels within the kernel. A chessboard like distribution of two values will produce the highest possible texture while the *entropy* is only moderate. A continuous gradient produces almost no texture but a high *entropy*.
-
-The *lowpass*, *highpass* and *laplace* processes change the contrast of the given image. High- and lowpass enhance or reduce the overall contrast, *laplace* is specialized for edge detection. 
+Unlike the *texture* of an image, Rao’s *entropy* returns the diversity of all pixel values within the given kernel. The result is insensitive to the spatial distribution of the pixels within the kernel. A chessboard like distribution of two values will produce the highest possible texture while the *entropy* is only moderate. A continuous gradient produces almost no texture but a high *entropy*. The *laplace* process enhances the image contrast and specifically enhances edges. 
 
 The *elevation* and *hillshade* processes are dedicated for elevation models. *Elevation* creates a three layers result with slope, exposition and shade of the elevation model. The *hillshade* process can superimpose illumination and shading of the elevation model to another image.
 
@@ -30,7 +28,9 @@ kernel
 	execute = »process under kernel«
 ```
 
-All kernel processes need one image from the working directory as input. Assign this image with *select*. »process under kernel« must be exchanged with a valid process name like *deviation*.
+*"process under kernel" must be exchanged with a valid process name like "deviation".*
+
+All kernel processes need one image from the working directory as input. Assign this image with *select*. All examples use “select = compile” as input. With *select*, any image in the working directory can be used.
 
 ------
 
@@ -38,31 +38,33 @@ All kernel processes need one image from the working directory as input. Assign 
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
-	execute = »first process under kernel«
-	execute = »second process under kernel«
-	…
-	radius = »pixels between center and border of the kernel«
+	execute = »process under kernel«
+	execute = »process under kernel«
+	...
+	radius = 3
 ```
 
-*Execute* selects one or more *kernel* processes to be executed for the same image. *Execute* can be repeated as often as necessary. »…process under kernel« must be exchanged with a valid process name like *deviation*.
+*In this example "process under kernel" must be exchanged by valid kernel processes like "texture" or "laplace". The "radius" needs a number between "1" and a larger one.*
+
+*Execute* selects one or more *kernel* processes to be executed for the same image. *Execute* can be repeated as often as necessary. The *radius* is the number of pixels between the center and the border of the kernel. 
 
 ------
 
-### *Deviation:* Return Rao‘s diversity based on pixels
+### *Entropy:* Return Rao‘s Entropy based on pixels
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = deviation
 	radius = 5
 ```
 
-Rao’s diversity uses variance instead of texture to evaluate the spectral diversity of landscape structures. The variance is insensitive for the spatial distribution of the pixels within the kernel. 
+Rao’s entropy or diversity uses variance instead of texture to evaluate the spectral diversity of landscape structures. The variance is insensitive for the spatial distribution of the pixels within the kernel. 
 
 ​Def: ![](../images/M6_entropy.png)	dkl: Density difference; k,l: neighbor pixels; pk, pl: frequency of pixel values “k” and “l”
 
@@ -76,7 +78,7 @@ Range: [0 … positive value]
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = elevation
@@ -89,19 +91,7 @@ Range: [0 … 1] for each band
 
 ------
 
-### *Hillshade:* Superimpose image data with shading from an elevation model
-
-```
-IMALYS [kernel]
-…
-kernel
-	select = compile
-	execute = hillshade
-```
-
-The *hillshade* process can superimpose the shading over each other image passed by *select* thus providing a 3D look to the result. *Hillshade* needs no parameters.
-
-Range: [negative value … positive value] 
+### *Hillshade:* Temporarily deaktivated
 
 ------
 
@@ -109,14 +99,14 @@ Range: [negative value … positive value]
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = inverse
 	radius = 3
 ```
 
-The *inverse* process creates a new image with the Inverse Difference Moment (IDM) proposed by Haralik⁵. The result is particularly high in dark regions and low in bright regions. It can complement *texture* and has proved useful in the analysis of settlement structures. The *radius* of the kernel can be set as necessary.
+The *inverse* process creates a new image with the Inverse Difference Moment (IDM) proposed by Haralik (5). The result is particularly high in dark regions and low in bright regions. It can complement *texture* and has proved useful in the analysis of settlement structures. The *radius* of the kernel can be set as necessary.
 
 ​Def: ![](../images/M6_inverse.png)	v: values; i,j: neighbor pixels; b: bands
 
@@ -128,7 +118,7 @@ Range: [0 … 4] for one band
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = laplace
@@ -150,7 +140,7 @@ Range: [negative value … positive value]
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = lowpass
@@ -169,7 +159,7 @@ Range: [negative value … positive value]
 
 ```
 IMALYS [kernel]
-…
+...
 kernel
 	select = compile
 	execute = normal
@@ -217,7 +207,7 @@ kernel
 	outer = 3
 ```
 
-The Laplace process increases the image contrast. The size of the emphasized structures depends on the difference of the two radius inputs. In this example the smaller radius (*inner*)  and the larger radius (*outer*) is set to '1' and '3' pixels.
+The *Laplace* process increases the image contrast. The size of the emphasized structures depends on the difference of the two radius inputs. In this example the smaller radius (*inner*)  and the larger radius (*outer*) is set to '1' and '3' pixels.
 
 ------
 
@@ -228,12 +218,15 @@ IMALYS [kernel]
 …
 kernel
 	select = compile
-	execute = »first process under kernel«
-	execute = »second process under kernel«
+	execute = »process under kernel«
+	execute = »process under kernel«
+	...
 	radius = 3
 ```
 
-The kernel radius is defined as the number of pixels between the center and the border of the kernel. The radius of the smallest possible kernel with 3x3 pixels is '1', '2' creates a 5x5 pixels kernel. Zero is not accepted.
+*In this example "process under kernel" must be exchanged by defined process names like "texture"*.
+
+The kernel radius is defined as the number of pixels between the center pixel and the border of the kernel. The pixel in the very center is not counted. The radius of the smallest possible kernel with 3x3 pixels is '1', '2' creates a 5x5 pixels kernel. Zero is not accepted.
 
 ------
 
@@ -248,7 +241,9 @@ kernel
 	target = »filename«
 ```
 
-The *target* command renames the result of the last process. The new name is restricted to the working directory. Only the last result will be affected. Choose the [export](11_Export.md) command to store results at a different place.  »process under kernel« must be exchanged with a valid process name like *deviation*, »filename« a valid string for the new file in the working directory. 
+*In this example "process under kernel" must be exchanged by a valid process name like "texture". "filename" must be exchanged by a valid filename without directory part.*
+
+The *target* command renames the result of the passed process. The new name is restricted to the working directory. As *target* is not linked to a specific process only one process should be executed under *kernel*. Choose the [export](11_Export.md) command to store results at a different place.  
 
 ------
 

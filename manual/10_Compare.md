@@ -14,16 +14,16 @@ The standard result of *compare* command is an accuracy table. Using the *contro
 
 ------
 
-### Reference: Select a class reference
+### *Reference*: Select a class reference
 
 ```
 IMALYS [compare]
-…
+...
 compare
 	reference = compile
 ```
 
-*Reference* assigns a raster or vector file to the *compare* command. If a vector file is used, a *fieldname* and the *raster* option must be given. 
+*Reference* assigns a raster or vector file to the *compare* command. If a vector file is used, a *fieldname* and the *raster* option must be added and the vector file must be transferred to a raster format.
 
 The process compares the latest [mapping](9_Mapping.md) result with the *reference* by means of a rank correlation after Spearmann. The raster file must be a classification layer, the vector file must have appropriate attributes. A rank correlation is independent of the basic value distribution. Therefore it can be used for each set of data, even a mix of form and spectral features.
 
@@ -33,64 +33,26 @@ r,s: item rank; i: item index; n: items count
 
 ------
 
-### *Raster:* Store a vectorized classification as a raster layer
-
-```
-IMALYS [compare]
-…
-compare
-	reference = refmap.shp
-	fieldname = landscape-ID
-	raster = true
-```
-
-Vector layers can not be compared directly. The *raster* option allows to save the class reference data to a raster image.  
-
-------
-
 ### *Fieldname:* Mark a field in the reference table that contains class names
 
 ```
 IMALYS [compare]
-…
+...
 compare
 	reference = refmap.shp
 	fieldname = landscape-ID
-	raster = true
 ```
 
-The parameter *fieldname* marks the equally called column in the reference data as class names of the reference.
+If a vector layer has been selected as a reference, its geometry and attributes must be transformed into a raster format. *fieldname* is used to select the attribute that contains the reference classes. *Fieldname* must be specified for each reference in vector format, even if only one field exists as an attribute.
 
 ------
 
-### *Assign* a class names from a reference classification
+### *Samples:* Set the number of control samples
 
-```
-IMALYS [compare]
-…
-compare
-	reference = refmap.shp
-	fieldname = landscape-ID
-	raster = true
-	assign = true
-```
+*Compare* compares a limited number of test points from the *reference* with the current classification in the working directory *mapping* and generates an accuracy table from this. Without *samples*, *compare* returns the statistical distribution of the classes across the references as a table.
 
-The option *assign* transfers the class names of the references to the results of the compare process
+*Compare* compares a limited number of test points from the *reference* with the current classification in the working directory *mapping* and generates an accuracy table from this. Without *samples*, *compare* returns the statistical distribution of the classes across the references as a table.
 
 ------
-
-### *Control:* Store additional accuracy information
-
-```
-IMALYS [compare]
-…
-compare
-	reference = refmap.shp
-	fieldname = landscape-ID
-	raster = true
-	control = true
-```
-
-The *control* option creates an image *accuracy* at the working directory where only accurate classification results are depicted, a table *combination* with all links between reference and classification and a table *specifity* with more accuracy measures. 
 
 [Top](10_Compare.md)

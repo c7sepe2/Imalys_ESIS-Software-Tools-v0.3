@@ -1,6 +1,4 @@
-**[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
-
-[TOC]
+[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
 ------
 
@@ -18,7 +16,7 @@
 
 ## Imalys Manual
 
-*Imalys* is called with a command line ([Run Imalys](0_Execute.md). Each command (below) controls an independent function. All commands and parameters of a process chain are passed in a single script (hook). The *manual* contains definitions and examples of all commands:
+*Imalys* is called with a command line ([Run Imalys](0_Execute.md)). All commands and parameters of a process chain are passed in a single text (interface). Each command controls an independent function. The *manual* contains definitions and examples of all commands:
 
 - **[Run Imalys](0_Execute.md):** Set up and control *Imalys* process chains
 
@@ -28,7 +26,7 @@
 
 - **[Import:](3_Import.md)** Select appropriate images from a collection of compressed archives, calibrate the values and cut them to a selected frame.
 
-- **[Compile:](4_Compile.md)** Transform, reproject, combine, cut and arrange images as input for all further commands. 
+- **[Compile:](4_Compile.md)** Transform, reproject, combine, cut and move images as input for all further commands. 
 
 - **[Reduce:](5_Reduce.md)** Combine or compare pixels in different bands, create indices, analyze time series and return principal components.
 
@@ -42,8 +40,8 @@
 
 - **[Compare:](10_Compare.md)** Compare classes with references 
 
-- **[Export:](11_Export.md)** Transform processing results into another image format. *Zones* and classes can also be exported in vector format.
+- **[Export:](11_Export.md)** Transform processing results into another image format. *Zones* and classes can be exported in vector format.
 
-- **[Replace:](12_Replace.md)** Set and change variables in a process chain. Structurally identical processes can be repeated automatically with different commands and parameters.
+- **[Replace:](12_Replace.md)** Set and change variables in a process chain. Processes chains can be repeated automatically with varying parameters.
 
-[Top](README.md#imalys-commands)
+[Top](README.md)

@@ -8,72 +8,63 @@
 
 *Compile* is the primary command to organize images and prepare them for further processing.
 
-Most of all *Imalys* commands need one image stored at the working directory as an input. The *compile* command translates all selected images to a common format, stacks them to a multi layer image, clips them to the given *frame* and stores the stack as *compile* at the working directory. The compilation ensures that all selected bands share the same format, projection, pixel size and frame. 
+Most of all *Imalys* commands accept only one image stored at the working directory as an input. The *compile* command translates all selected images to a common format, warps them to a common coordinate system and pixel size, stacks them to a multi layer image, clips them to the given *frame* and stores the result as *compile* at the working directory. The compilation ensures that all selected bands share the same format, projection, pixel size and frame. 
+
 
 ```
 IMALYS [compile]
-…
+...
 compile
 	search = ~/ESIS/results/*2022*.tif
 	period = 20220501 – 20220731
-	frame = ~/ESIS/frames/c4738.gpkg
 	crsystem = 32632
+	merge = true
 	pixel = 30
-	target = Leipzig_2022
-```
-
-*This example stacks all images of the results directory taken between May and July 2022 and cuts them to the frame “c4738”. The result is set to UTM zone 32 (crsystem = 32632) and the pixel size to 32 meters. The result is called "Leipzig_2022" and stored at the working directory.*
-
-------
-
-The images can be selected directly by a filename (*select*) or a *search* string with wild chars ('?','*'). Select can be repeated as often as necessary. Each uncompressed image can be used as an input. If a projection *crsystem* and a *pixel* size is passed, the result is converted to the given system, otherwise the properties of the first image will be used. The selection can be reduced further to a specified time *period* and clipped to a common *frame*. Regions outside of he *frame* will be filled with nodata. Each selected image will cover individual bands at the result. If two images share exactly the same acquisition date, they are merged automatically to one image. Different images can be merged with the [reduce](5_reduce.md) command. 
-
-To process time-dependent statistics, the acquisition date of the images must be known. For images from external sources the date [YYYYMMDD] must be added at the end of the file name.  
-
------
-
-### *Select* a single images by a filename
-
-```
-IMALYS [compile]
-…
-compile
-	select = ~/ESIS/results/BRD_NirV_20230801-20231031.tif
+	bands = B3:B4
+	names = red, infrared
+	frame = ~/ESIS/frames/c4738.gpkg
+	clip = true
+	target = Leipzig_B34_2022
 	...
 ```
 
-*Select* will assign a single image. The *select* parameter can be repeated as often as necessary. Images at the working directory can be called only by their filename. *Select* can be combined with *search* and *period*. 
+The images can be selected directly by a filename (*select*) or a *search* string with wild chars ('?','*'). Both can be repeated as often as necessary. Each image format supported by the [gdal](http://www.osgeo.org/) library can be used as an input. If a projection *crsystem* and a *pixel* size is passed, the result is converted to the given system. The selection can be reduced further to a specified time *period* and clipped to a common *frame*. 
+
+For different images, *frame*, *crsystem*, and *pixel* should always be specified. If this information is missing, *compile* will take the parameters from the first image and change all others according to this model. 
+
+If two images share exactly the same acquisition date, they are interpreted as different tiles of the same flight path and can be combined using the *merge* parameter. To do this, the date must be at the end of the file name. The [import](3_Import.md) command saves images with a suitable name.
 
 ------
 
-### *Search:* Select images using a search string
-
-
+### *Bands*: Select specified band
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	...
+	select | search = ...
+	bands = B3:B4
 ```
 
-A *search* string using system wildchars ('*','?') is used to select appropriate images. Variable and fixed parts of the filenames can be combined as needed. Images at the working directory can be called only by their filename. The *search* parameter can be repeated as often as necessary. *Search* can be combined with *select* and *period*.
-
+Instead of complete images, individual bands from an image can be transferred using the *bands* parameter. Individual bands are selected with “BX,” where “X” stands for the band number to be transferred. The output “BX:BY” selects all bands between number ‘X’ and number “Y”. In the [Import](3_Import.md) command, *bands* are selected by their names. The *compile* command uses the order of the bands in the image for this purpose.
+ 
 ------
 
-### *Period:* Select images by a time period
+### *Clip:* Mask the passed *frame*
+
+**only together with *frame***
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	period = 20220501 – 20220731
-	...
+	select | search = ...
+	clip = false | true
 ```
 
-*Period* reduces the file list of a *search* to images that match the specified period. The acquisition date must be passed as YYYYMMDD - YYYYMMDD (Y=Year, M=Month, D=Day). As not all image formats save an acquisition date, the date must be provided at the end of the file name. Use [import](3_Import.md) to get appropriate names.
+*"clip = false" is default and can be skipped.*
+
+*Clip* restricts the visible image to the transferred *frame*. The option *clip = true* overwrites all pixels outside the *frame* with NoData. The default value is “clip = false” and does not need to be specified.
 
 ------
 
@@ -81,14 +72,11 @@ compile
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	period = 20220501 – 20220731
-	frame = ~/ESIS/frames/c4738.gpkg
+	select | search = ...
 	crsystem = 32632
 	pixel = 30
-	...
 ```
 
 To use different images of the same region or to adopt images to given maps the projection and the pixel size can be changed. *crsystem* expects an EPSG number as new projection. *Pixel* expects a number in meters for the new pixel size. The process depends on the image type. Maps and classified images are reprojected using the nearest neighbor principle. All other images are interpolated by a bicubic convolution process. *Crsystem* and *pixel* can be used also if only the pixel size is to be changed. 
@@ -99,12 +87,10 @@ To use different images of the same region or to adopt images to given maps the 
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	period = 20220501 – 20220731
+	select | search = ...
 	frame = ~/ESIS/frames/c4738.gpkg
-	...
 ```
 
 If the selected images have different coverages or the result should be restricted to a specified area the parameter *frame* can restrict the result to a specific area. Frame must be passed as a polygon (geometry).
@@ -113,22 +99,96 @@ If the selected images have different coverages or the result should be restrict
 
 ------
 
-### *Clip:* Mask the passed *frame*
-
-**only together with *frame***
+### *Merge:* Overwrite images with the same acquisition date
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	period = 20220501 – 20220731
-	frame = ~/ESIS/frames/c4738.gpkg
-	clip = true
-	...
+	select | search = ...
+	merge = false | true
 ```
 
-*Clip* restricts the visible image to the transferred *frame*. The option *clip = true* overwrites all pixels outside the *frame* with NoData. 
+*"merge = false" is default and can be skipped*
+
+Providers such as ESA and NASA deliver their raw data in tiles that overlap at the edges. In the direction of flight of the satellite, these tiles contain identical image data. *Compile* can combine such tiles into a homogeneous image during import. The default value is “merge = false” and does not need to be specified.
+
+If the *merge* parameter is set, the *compile* command saves tiles with identical dates as a continuous image. All other tiles are saved as separate layers in a common stack.
+
+------
+
+### *Names:* Assign individual layer names
+```
+IMALYS [compile]
+...
+compile
+	select | search = ...
+	names = blue, green, red, infrared, temperature
+```
+
+*In this example 5 names for 5 layers are passed*
+
+Layer names can contain important information, especially when raster and vector layers are mixed. With *names*, a comma-separated list of names can be passed, which is written to the image data in exactly this order. To rename the layers properly, the number of names must match the number of bands. Without manual input, *compile* takes the names of the processes that created the individual channels as far as possible.
+
+------
+
+### *Nodata:* Set an additional NoData value
+```
+IMALYS [compile]
+...
+compile
+	select | search = ...
+	nodata = -32768
+```
+
+*In this example a low integer figure is passed. Sometimes it serves as NoData value in elevation models.*
+
+Imalys always uses 1/0 as the value for undefined pixels (NoData). When image data from different sources is mixed, other image values may be defined as Nodata. The *nodata* parameter can be used to define any value in the image data as NoData. Existing NoData values are retained, and the transferred value is converted to NoData. 
+
+------
+
+### *Period:* Select images by a time period
+
+**only together with *search***
+
+```
+IMALYS [compile]
+...
+compile
+	select | search = ...
+	period = 20220501 – 20220731
+```
+
+*Period* reduces the file list of a *search* to images that match the specified period. The acquisition date must be passed as YYYYMMDD - YYYYMMDD (Y=Year, M=Month, D=Day). As not all image formats save an acquisition date, the date must be provided at the end of the file name. Use [import](3_Import.md) to get appropriate names.
+
+-----
+
+### *Select* single images by a filename
+
+```
+IMALYS [compile]
+...
+compile
+	select = ~/ESIS/results/BRD_NirV_20230801-20231031.tif
+```
+
+*Select* will assign a single image. The *select* parameter can be repeated as often as necessary. Images at the working directory can be called without the directory part. *Select* can be combined with *search* and *period*. 
+
+------
+
+### *Search:* Select images using a search string
+
+```
+IMALYS [compile]
+...
+compile
+	search = ~/ESIS/results/*2022*.tif
+```
+
+*In this example, all TIFF-formatted images whose file names contain the string “2022” will be selected*
+
+A larger amount of images can be selected with a *search* string using system placeholders ('*','?', …). Variable and fixed parts of the filenames can be combined as needed. 
+The *search* parameter can be repeated as often as necessary. *Search* can be combined with *select* and *period*. 
 
 ------
 
@@ -136,22 +196,18 @@ compile
 
 ```
 IMALYS [compile]
-…
+...
 compile
-	search = ~/ESIS/results/*2022*.tif
-	period = 20220501 – 20220731
-	frame = ~/ESIS/frames/c4738.gpkg
-	crsystem = 32632
-	pixel = 30
-	target = Leipzig_2022
+	select | search = ...
+	target = ps_compile
 ```
 
-If the result of the *compile* command should be preserved or two *compile* commands should be given in succession the default name can be changed. 
+*In this example "ps_compile" is chosen as a valid filename at the working directory. The directory part is added by Imalys.*
 
-The *target* parameter saves the result of the *compile* command at the working directory with the passed name. No path name needs to be specified for the working directory. Final results can be stored with the [export](11_Export.md) command at a different place. 
+If the result of the *compile* command should be preserved for further processing the default name "compile" can be changed using the the *target* parameter. *Target* saves the result of the *compile* command at the working directory with the passed name. No path name needs to be specified for the working directory. 
+
+Final results can be stored with the [export](11_Export.md) command at a different place. 
 
 ------
 
-## *Names:* Add filenames as layer names
-
-[Top](4_Compile.md)
+[Top](4_Compile.md#Frame:)

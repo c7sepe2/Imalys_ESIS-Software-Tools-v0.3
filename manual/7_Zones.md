@@ -6,11 +6,17 @@
 
 ## *Zones:* Delineate homogeneous image elements
 
-The *zones* command delineates a seamless network of image segments that completely covers the image. The process tries to minimize the pixel diversity within each zone. Zones were introduced to provide a structural basis for landscape diversity and other structural features. They allow an easy transformation of raster images to a vector format like maps. Zones are stored in an internal format to support rapid processing. Use the [Export](11_Export.md) command to get attributed polygons. The implementation of the *zones* follows the GEOBIA paradigm (Blaschke¹). 
+The *zones* command delineates a seamless network of image segments that completely covers the image (1). The process tries to minimize the pixel diversity within each zone. *Zones* are stored in an internal format to support rapid processing. Use the [feature](8_Feature.md) and the [export](11_Export.md) command to get attributed polygons from *Zones*. 
+
+In *Imalys*, *zones* form the central level for describing a landscape and its development. *Zones* allow raster images, boundaries, local features and regional structures to be easily linked. The shape, size and density of natural boundaries provided by *zones* are essential characteristics of a landscape. The implementation of the *zones* follows the ESIS paradigm (Overview). 
 
 The *zones* process can be controlled by the *size* and the *bonds* parameter. Technically the zones are created by an iteration that can be continued until the diversity within the zones can not be reduced further by combining zones. The resulting zones can be rather large. The *size* parameter will terminate the process when the mean of all zones has reached the input. The *bonds* parameter controls the size differences of the resulting zones.
 
-Larger *zones* are always the combination of smaller *zones*. The number of input layers is not restricted. To control the result of the *zone* generation an ESRI shape file *index.shp* is created at the working directory. Zones can be classified and combined to larger *objects* (see [Mapping](9_Mapping.md)). 
+Larger *zones* are always the combination of smaller *zones*. 
+
+Unterschiedlich große *bonds* Parameter können verwendet werden um eine Hierarchie von *Zonen* zu erzeugen, in der alle Grenzen der gröberen Auflösung (hohe *bonds* Werte) in der feineren enthalten sind.
+
+The number of input layers is not restricted. To control the result of the *zones* process an ESRI shape file *index.shp* is created at the working directory. Zones can be classified and thus combined to larger *objects* (see [Mapping](9_Mapping.md)). 
 
 ------
 
@@ -18,10 +24,9 @@ Larger *zones* are always the combination of smaller *zones*. The number of inpu
 
 ```
 IMALYS [zones]
-…
+...
 zones
 	select = compile
-	…
 ```
 
 The *zones* module needs an image stored at the working directory. Use *select* to assign the image. The *zones* module can work with classified and scalar images. Scalar images will be segmented in order to minimize the local variance of the pixel values. Classified images (maps) will be converted to a vector format. Each classified area will be translated to one zone.
@@ -32,14 +37,13 @@ The *zones* module needs an image stored at the working directory. Use *select* 
 
 ```
 IMALYS [zones]
-…
+...
 zones
 	select = compile
 	size = 30
-    bonds = low
 ```
 
-The density of zones is mainly controlled by the *size* parameter. The input is interpreted as mean size of all resulting zones and can be further qualified by the *bonds* parameter. The *size* of zones is counted in pixels. 
+The density of zones is mainly controlled by the *size* parameter. The input is interpreted as mean size of all resulting zones and can be further qualified by the *bonds* parameter. The *size* of the zones is counted in pixels. 
 
 ------
 
@@ -47,12 +51,14 @@ The density of zones is mainly controlled by the *size* parameter. The input is 
 
 ```
 IMALYS [zones]
-…
+...
 zones
 	select = compile
 	size = 30
-	bonds = low
+	bonds = low | medium | high | accurate
 ```
+
+*One of the four alternatives for bonds must be passed.*
 
 Depending on the landscape structure, individual *zones* of very different sizes can be created. *Bonds = low* will allow a wide range of sizes, *bonds = high* will force the result to almost equal sizes and *bonds = medium* is a compromise between both. *Bonds = accurate* only works properly with classified images and is used to vectorize them.
 
@@ -62,18 +68,34 @@ Depending on the landscape structure, individual *zones* of very different sizes
 
 ```
 IMALYS [zones]
-…
+...
 zones
 	select = compile
 	size = 30
-	bonds = low
+	bonds = low | medium | high | accurate
 	sieve = 2
 ```
 
-Very small zones like single pixels or short pixel rows may not be desired. The parameter *sieve* allows to merge small zones with larger ones. The passed number is interpreted as accepted pixels within the zone. `[sieve = 1]` will erase single pixels, `[sieve = 2]` will erase pixel pairs and so on. As dot shaped zones show more internal boundaries than a linear arrangement the process prefers narrow shaped zones. This process might need repeated calls.
+Very small zones like single pixels or short pixel rows may not be desired. The parameter *sieve* allows to merge small zones with larger ones. The passed number is interpreted as accepted pixel boundaries within the zone. »sieve = 1« will erase single pixels, »sieve = 2« will erase pixel pairs and so on. As dot shaped zones show more internal boundaries than a linear arrangement the process prefers narrow shaped zones. This process might need repeated calls.
 
 ------
 
-(1) Thomas Blaschke,T. et al: Geographic Object-Based Image Analysis – Towards a new paradigm: ISPRS Journal of Photogrammetry and Remote Sensing 87 (2014) 180–191, http://dx.doi.org/10.1016/j.isprsjprs.2013.09.014
+### *Elevation:* Create zones from an elevation model
+
+```
+IMALYS [zones]
+...
+zones
+	select = compile
+	elevation = true
+```
+
+The *elevation* parameter interprets the *selected* image as an elevation model and determines all local minima and the corresponding watersheds. The *zones* formed in this way correspond to hydrological micro-catchments. The *elevation* process integravityrprets flat areas as standing water and expands the *zones* accordingly. 
+
+The *runoff* parameter under [mapping](9_Mapping.md) can be used to add the elevation, drainage points, water runoff and catchment areas of the *zones*. The result can be visualized as subcatchments and a drainage diagram in the form of line vectors.
+
+------
 
 [Top](7_Zones.md)
+
+(1) Thomas Blaschke,T. et al: Geographic Object-Based Image Analysis – Towards a new paradigm: ISPRS Journal of Photogrammetry and Remote Sensing 87 (2014) 180–191, http://dx.doi.org/10.1016/j.isprsjprs.2013.09.014

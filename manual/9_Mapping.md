@@ -6,15 +6,39 @@
 
 ## *Mapping:* Classify image features and create image objects
 
-*Imalys* provides three mapping alternatives. A fully self adjusting classification based on pixel features will be performed if a standard image is *selected*. The same can be done with [zones](7_Zones.md), if the result of the *zones* process at the working directory (*index*) is selected as input (see [tutorial](../tutorial/5_Mapping.md)). If the *fabric* option is added, the zones will be further combined to *objects* that are characterized by the patterns of different *zones*.
+*Imalys* provides several mapping alternatives. A fully self adjusting classification based on pixel features will be performed if a standard image is *selected*.
 
-In all cases the classification result is a raster layer called "mapping" with class IDs as values and random colors given as a color palette. 
+```
+IMALYS [mapping]
+...
+mapping
+	select = compile
+	...
+```
 
-With *select = compile* the image [compile](4_Compile.md) at the working directory is classified. The process depends on the Euclidean distance of the values in the n-dimensional feature space. As all bands are treated as equal important, the value distribution of the different bands should be similar. For images calibrated to reflection ([import](3_Import.md)) this is the case. Other bands like elevation or humidity will not fit. The *equalize* process can be used to scale all bands to the same value range (see [background·mapping](../background/2_Mapping.md)).
+The same can be done with [zones](7_Zones.md) and their [features](8_Features.md), if the *index* of the *zones* is *selected* (see [tutorial](../tutorial/5_Mapping.md)). If the *fabric* option is added, classified *zones* will be combined to structured *objects*. 
 
-With *select = index* the result of the most recent [zones](7_Zones.md) and [features](8_Features.md) process is assigned to the *mapping*. In this case *zones* and their *features* are classified instead of pixels. Spectral classification with *zones* instead of pixels are superior in most cases because *zones* follow natural boundaries and generalize pixel values. The typical “pepper and salt” effect of pixel orientated classes will not appear. Moreover the mapping of *zones* can include size, shape and context features of the zones. As the values of these features differ largely from reflection the image values should be scaled with the *equalize* process in accordance to the expected results.
+```
+IMALYS [mapping]
+...
+mapping
+	select = index
+```
 
-The *fabric* process uses the classified zones to find and characterize spatial patterns (*objects*) among them (see see [background·objects](../background/3_Objects.md)). The spatial distribution of *zones* and their features over the whole image is analyzed and most common patterns are extracted as *object* classes. This includes the typical neighborhood of *zones*. Many real objects are characterized more by their internal structure and their environment but by their spectral composition. *Objects* can model his composition. The object definition does not restrict the size of *objects*. On the other hand large single *zones* like waterbodies can be classified as *objects*.
+All classifiers determine local focal points in the n-dimensional feature space (clustering). They train themselves and pass on a limited number of typical feature combinations for the transferred data. For image data, the features are spectral combinations. For *zones*, they are spectral, geometric and pattern indicators. The number of extracted classes is controlled by the *classes* parameter.
+
+```
+IMALYS [mapping]
+...
+mapping
+	select = index
+	runoff = true
+	...
+```
+
+With the “runoff” parameter, *mapping* interprets the *zones* as micro-catchments from an elevation model (see [zones](7_Zones.md)) and calculates catchment areas and synthetic runoff. No further information is required for this.
+
+Please follow the detailed instructions under the key words below.
 
 ------
 
@@ -22,47 +46,16 @@ The *fabric* process uses the classified zones to find and characterize spatial 
 
 ```
 IMALYS [mapping]
-…
+...
 mapping
-	select = compile
+	select = compile | index
 ```
 
-To classify a raster image a source like [compile](4_Compile.md) must be passed. If multiple images should be classified together, they must be stacked beforehand using the [compile](4_Compile.md) command.
+The input data must be specified for each classification process. For pixel-based classification, this is any image in the working directory. Image data located elsewhere must first be transferred to the working directory using [compile](4_Compile.md). Short time series can greatly improve classification. In this case, the different images must be combined into one image using *compile* before classification.
 
-```
-IMALYS [mapping]
-…
-mapping
-	select = index
-```
+If *zones* are to be classified, the *index* and *topology* of the *zones* must be stored in the working directory. The *index* is the raster version of the *zones* geometry, while the *topology* stores the spatial relationship between the *zones*. The classification uses all *features* of the selected [zones](7_Zones.md) equally. *Zones* and *features* that are suitable for the question should be carefully selected in advance and regenerated to suit the question (see *equalize*).
 
-To classify *zones*, the raster version of the *zones* at the working directory (*index*) must be selected. The process depends completely on the most recent created [zones](7_Zones.md) and their [features](8_Features.md). The resulting "index" and "topology" files must be stored at the working directory. 
-
-```
-IMALYS [mapping]
-…
-mapping
-	select = index
-	fabric = 1`
-```
-
-If the *zones* should be further combined to *objects*, the *fabric* parameter must be passed. *Fabric = 1* combines each *zone* with all neighboring *zones* to detect patterns. Larger numbers include the second and further spatial generations of neighbor *zones*.   
-
-------
-
-### *Equalize:* scale all attribute values to the range [0…1]
-
-**only together with zones!**
-
-```
-IMALYS [mapping]
-…
-mapping
-	select = index
-	equalize = 3
-```
-
-The attributes (features) of zones can show very different values ranges. If they should be meaningfully compared by a classification process, the values must be normalized. The *equalize* option scales all attributes of the current [features](8_Features.md) command to the same value range. The input is given in standard deviations to fill the fixed value range [0 … 1]. *Equalize = 1* (one standard deviation) is the weakest binding, inputs around *3* bind 99.9% of all values to the same interval. *Equalize* does not permanently change the attributes.
+Combining *zones* into *objects* with the *fabric* parameter requires classified [zones](7_Zones.md). The *index*, *topology*, and *mapping* files must be stored in the working directory. *Zones* and all necessary attributes can be saved using the [export](11_Export.md) command and transferred back to the working directory using the [import](3_Import.md) command.
 
 ------
 
@@ -70,12 +63,13 @@ The attributes (features) of zones can show very different values ranges. If the
 
 ```
 IMALYS [mapping]
-…
+...
 mapping
 	select = index
-	classes = 30`
-	samples = 50000
+	classes = 30
 ```
+
+*The input must be a positive number.*
 
 The number of classes at the result is set by *classes*. The number should not be too large. Overclassification reduces the accuracy. We recommend to use two *classes* per desired land use feature. *Imalys* classifies statistically. Coincidence can confuse a statistical analysis. Sometimes one *class* more or less can (!) significantly improve the quality.
 
@@ -85,14 +79,108 @@ The number of classes at the result is set by *classes*. The number should not b
 
 ```
 IMALYS [mapping]
-…
+...
 mapping
 	select = compile
-	classes = 30`
-	samples = 50000`
+	classes = 30
+	samples = 50000
 ```
 
+*The input must be a positive number.*
+
 To find clusters in the feature space *mapping* uses *samples* from the image data. They are selected from the image at random places. *Samples* make the classification much faster than when each pixel or zone has to be evaluated individually. We recommend to use at least 1000 *samples* per desired class.
+
+------
+
+### *Fabric:* Combine zones to objects
+
+```
+IMALYS [mapping]
+...
+mapping.
+	select = index
+	classes = 14
+	samples = 50000
+	fabric = true
+```
+
+The *fabric* parameter extends an existing classification of [zones](7_Zones.md) to composite *objects* from different zones. *Objects* are defined only by the spatial pattern of neighboring zones. If the pattern repeats, objects can become arbitrarily large. Regardless of this, individual *zones* with unspecific surroundings, such as standing water, can be mapped as *objects* (see [Mapping](../background/B_Mapping.md) background). 
+
+------
+
+### *Reach:* Set the collection reach for fabric patterns
+
+**Only together with *fabric***
+
+```
+IMALYS [mapping]
+...
+mapping
+	select = index
+	classes = 14
+	samples = 50000
+	fabric = true
+	reach = 3
+```
+
+*The input must be a natural number.*
+
+Sometimes complex patterns of [zones](7_Zones.md) cannot be described by direct neighbors alone. With *reach*, indirect neighbors can also be included in pattern formation. The value of *reach* corresponds to the number of layers of neighboring *zones* that are included in the pattern analysis. *Reach=1* (immediate neighbors) is the default and can be omitted. Large search areas can also lead to blurred classes. It may be more useful to change the size of the *zones* instead.
+
+------
+
+### *Equalize:* Scale all attribute values to the range [0..1]
+
+**only together with zones!**
+
+```
+IMALYS [mapping]
+...
+mapping
+	select = index
+	equalize = 0.01
+```
+
+*Inputs between 0.0 and 0.5 are permitted*
+
+The [features](8_Features.md) of the [zones](7_Zones.md) can show very different values ranges. If they should be meaningfully compared by a classification process, the values of all features have to be normalized. The *equalize* option scales the values of the current *features* to a value range between 0 and 1. Outliers can be excluded by the value of the *equalize* parameter.
+
+*Equalize* sets the limits of the value range to the specified percentile [0.0 to 0.5]. The input is used equally for the upper and lower thresholds. “*Equalize = 0.01*” scales the values so that 1% of the largest and smallest values are NOT within the limits of 0.0 to 1.0.
+
+*Equalize* does not permanently change the attributes.
+
+------
+
+### *Runoff:* Link zones according to a synthetic runoff
+
+```
+IMALYS [runoff]
+...
+mapping
+	select = index
+	runoff = true
+```
+
+The *runoff* parameter calculates a synthetic runoff between [zones](7_Zones.md) derived from an elevation model using the *elevation* parameter. *Runoff* adds the coordinates of the runoff points (“latitude,” “longitude”), the drained area in hectares ("weight"), and the ID of the next linked *zone* (“link”) to the attribute table of the *zones* in the working directory.
+
+*Runoff* additionally translates the hydrological attributes into a layer of line vectors that schematically mark the runoff between the *zones*. Any point can be expanded into a catchment area. *Runoff* does not require any information about classes or samples. The results can be saved with [Export](11_Export.md) as *zones* or as a vector layer.
+
+------
+
+### *Release:* Allow runoff at image boundaries
+
+```
+IMALYS [runoff]
+...
+mapping
+	select = index
+	runoff = true
+	release = true
+```
+
+Every elevation model has boundaries. When calculating synthetic runoff, the boundaries at the edge of the image act like a sheet pile wall. The *release* parameter opens this wall so that water can flow off at the edge of the image. The edges of the elevation model have a significant influence on the result in any case. Ideally, the boundaries of the elevation model should largely correspond to the catchment area. 
+
+NoData areas within the elevation model are ignored. Runoff from or over NoData areas is not generated. It may be useful to bridge NoData areas by interpolation before processing.
 
 ------
 
@@ -109,5 +197,7 @@ mapping
 ```
 
 The primary classification result is a raster layer (*mapping*) with class IDs as values and random colors given as a color palette. The *values* option will transfer the random colors to “natural” colors derived from the class definition. The default colors are the first three bands of the classified image.
+
+------
 
 [Top](9_Mapping.md)
