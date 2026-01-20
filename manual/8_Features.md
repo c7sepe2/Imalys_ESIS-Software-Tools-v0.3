@@ -30,12 +30,6 @@ features
 
 *Entropy*, *normal*, and *texture* determine the texture and distribution of pixels within individual *zones*. The processes preserve image sharpness and distinguish between the features of individual structures and their boundaries. 
 
-================
-
-Zonen als Kernel
-
-================
-
 *Cellsize*, *dendrites*, *proportion* and *relation* add morphological features of single *zones* and relations to neighboring *zones*. *Diversity* adds the spectral diversity between *zones* as *entropy* does it for pixels. All morphological features are designed to be as independent as possible of the absolute size of the *zones*, as the absolute size can be selected freely. 
 
 The *feature* command completely replaces the attributes table of the *zones*. Using *append*, the existing list can be extended. *Diffusion* smooths the values of the features and can thus make local maxima and outliers more apparent. With *values*, all vector attributes can be transferred to a raster image.
