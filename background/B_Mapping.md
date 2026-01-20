@@ -65,25 +65,3 @@ Since the *object* class definition only depends on different frequencies, each 
 ------
 
 [Top](B_Mapping.md)
-
-
-
-### Themen
-
-**was wird klassifiziert? ← Spektralkombinationen, Features, Höhe bei DEMs**
-
-**Basis ist der n-nimensioale Merkmalsraum, egal ob Pixel oder Merkmale**
-
-**Features können sehr unterschiedliche Wertebereiche haben → Ausgleich vorsehen**
-
-**Zonen kombinieren Grenzen UND innere Merknmale UND Kontext ← mehr Information als Pixel**
-
-With *select = compile* the spectral combinations of the image [compile](4_Compile.md) are classified. The process depends on the Euclidean distance of the values in the n-dimensional feature space. As all bands are treated as equal important, the value distribution of the different bands should be similar. For images calibrated to reflection or radiation ([import](3_Import.md)) this is the case. Other bands like elevation or humidity will not fit. The *equalize* process can be used to scale all bands to the same value range (see [background·mappgenerations ing](../background/B_Mapping.md)).
-
-With *select = index* the result of the most recent [zones](7_Zones.md) and [features](8_Features.md) process is assigned to the *mapping*. In this case *zones* and their *features* are classified instead of pixels. Spectral classification with *zones* instead of pixels are superior in most cases because *zones* follow natural boundaries and generalize pixel values.
-
-=== boundaries as preclassification ===
-
-The typical “pepper and salt” effect of pixel orientated classes will not appear. Moreover the mapping of *zones* can include size, shape, context and time features of the zones. As the values of these features differ largely from reflection the image values should be scaled with the *equalize* process in accordance to the expected results.~~
-
-~~The *fabric* process uses the classified zones to find and characterize spatial patterns among them (see see [background·objects](../background/B_Objects.md)). The spatial distribution of different *zones* and their vicinity is analyzed and most common patterns are extracted as *object* classes. Many real objects are characterized more by their internal structure and their environment but by their spectral composition. *Objects* can model his composition. The object definition does not restrict the size of *objects*. On the other hand large single *zones* like waterbodies can be classified as a single *object*.
