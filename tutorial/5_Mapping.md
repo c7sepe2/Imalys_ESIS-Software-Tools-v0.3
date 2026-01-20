@@ -4,7 +4,7 @@
 
 ------
 
-				## 5 Classification and pattern analysis
+## 5 Classification and pattern analysis
 
 Imalys implements methods to map image features of all kinds into separate groups or clusters ([mapping](../manual/9_Mapping.md)). The result reflects feature combinations that are common in the classified image. *Mapping* can classify images at three levels: 
 
