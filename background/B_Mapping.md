@@ -1,19 +1,12 @@
 **[Home](../README.md) «» [Manual](../manual/README.md) «» [Tutorial](../tutorial/README.md) «» [Background](../background/README.md) «» [Source](../source)**
 
-------
-
-## 2 Mapping
-
-- [Pixels · Zones · Objects](B_Mapping.md#Pixels-·-Zones-·-Objects)
-- [Feature Space](B_Mapping.md#Feature-Space)
-- [Zones and Features](B_Mapping.md#Zones-and-Features)
-- [Time as an attribute](B_Mapping.md#Time-as-an-attribute)
-- [Objects](B_Mapping.md#Objects)
-- [Citations](B_Mapping.md#Citations)
+[TOC]
 
 ------
 
-### Pixels · Zones · Objects
+## Mapping
+
+### Pixels, Zones and image Objects
 
 Images of the earth’s surface are structured. Pixels with almost the same spectral combination are not randomly distributed but form clusters and sometimes regular patterns. The spectral combination of each image can be classified using the [mapping](../manual/9_Mapping.md) command. 
 
@@ -23,7 +16,15 @@ The [zones](../manual/7_Zones.md) command combines regions with pixels of almost
 
 ------
 
-### Feature Space
+### Features from pixel's and zone's properties
+
+In terms of zones two abstractions take place. One of them are spectral features. Zones have a spectral composition like pixels but the value is the mean of all pixels connected to one zone. Local differences or textures can not be expressed as a spectral attribute but can be added as additional feature. Imalys introduces local contrast and the distribution of the pixels within the zones as additional features that can support the pure spectral features (diversity, entropy, normal, texture under →features). 
+
+In addition to spectral features the size, shape and connection to other *zones* might differ considerably für single *zones*. Features derived from the geometry and neighborhood of the *zones* can be added as attributes of the *zones* polygons (cellsize, dendrites, diffusion, proportion, relation under →features). 
+
+------
+
+### Control feature space dimensions
 
 The basis of all [mapping](../manual/9_Mapping.md) processes is the Euclidean distance in the n-dimensional feature space, similar to the IsoClass method. The classification process at Imalys follows Kohonen’s suggestion (Kohonen¹) where each neuron represents a separate class. According to this concept the neurons have individual properties, not only connections as neurons of the perceptron type would have (Kriesel²). One of the individual properties is a receptive field, a section of the feature space in which the neurons can recognize features. As for the rest, they are blind. This property enhances their ability to depict small but common differences. The training methods were strongly influenced by the ROLF (Kriesel²) concept.
 
@@ -31,19 +32,11 @@ All classification processes under [mapping](../manual/9_Mapping.md) use cluster
 
 ------
 
-### Zones and Features
-
-In terms of zones two abstractions take place. One of them are spectral features. Zones have a spectral composition like pixels but the value is the mean of all pixels connected to one zone. Local differences or textures can not be expressed as a spectral attribute but can be added as additional →feature. Imalys introduces local contrast and the distribution of the pixels within the zones as additional features that can support the pure spectral features (diversity, entropy, normal, texture under →features). 
-
-In addition to spectral features the size, shape and connection to other *zones* might differ considerably für single *zones*. Features derived from the geometry and neighborhood of the *zones* can be added as attributes of the *zones* polygons (cellsize, dendrites, diffusion, proportion, relation under →features). 
-
-------
-
 ### Time as an attribute
 
 ------
 
-### Objects
+### Pattern analysis to define "objects"
 
 *Objects* (execute = fabric) are a spatial composition of different *zones*. If *zones* are classified according to their local →features the connection frequency of different *zones* can be used to define pattern classes among them. Add the *execute = fabric* parameter to combine *zone* and *opbject* processing under the →mapping command.
 
@@ -71,4 +64,26 @@ Since the *object* class definition only depends on different frequencies, each 
 
 ------
 
-[Top](B_Mapping.md#Pixels-·-Zones-·-Objects)
+[Top](B_Mapping.md)
+
+
+
+### Themen
+
+**was wird klassifiziert? ← Spektralkombinationen, Features, Höhe bei DEMs**
+
+**Basis ist der n-nimensioale Merkmalsraum, egal ob Pixel oder Merkmale**
+
+**Features können sehr unterschiedliche Wertebereiche haben → Ausgleich vorsehen**
+
+**Zonen kombinieren Grenzen UND innere Merknmale UND Kontext ← mehr Information als Pixel**
+
+With *select = compile* the spectral combinations of the image [compile](4_Compile.md) are classified. The process depends on the Euclidean distance of the values in the n-dimensional feature space. As all bands are treated as equal important, the value distribution of the different bands should be similar. For images calibrated to reflection or radiation ([import](3_Import.md)) this is the case. Other bands like elevation or humidity will not fit. The *equalize* process can be used to scale all bands to the same value range (see [background·mappgenerations ing](../background/B_Mapping.md)).
+
+With *select = index* the result of the most recent [zones](7_Zones.md) and [features](8_Features.md) process is assigned to the *mapping*. In this case *zones* and their *features* are classified instead of pixels. Spectral classification with *zones* instead of pixels are superior in most cases because *zones* follow natural boundaries and generalize pixel values.
+
+=== boundaries as preclassification ===
+
+The typical “pepper and salt” effect of pixel orientated classes will not appear. Moreover the mapping of *zones* can include size, shape, context and time features of the zones. As the values of these features differ largely from reflection the image values should be scaled with the *equalize* process in accordance to the expected results.~~
+
+~~The *fabric* process uses the classified zones to find and characterize spatial patterns among them (see see [background·objects](../background/B_Objects.md)). The spatial distribution of different *zones* and their vicinity is analyzed and most common patterns are extracted as *object* classes. Many real objects are characterized more by their internal structure and their environment but by their spectral composition. *Objects* can model his composition. The object definition does not restrict the size of *objects*. On the other hand large single *zones* like waterbodies can be classified as a single *object*.

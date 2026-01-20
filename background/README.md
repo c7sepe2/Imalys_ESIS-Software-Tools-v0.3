@@ -10,7 +10,7 @@
 
 - [**Compile:**](B_Compile.md) Prepare different images for processing with *Imalys* tools
 
-- [**Delineate:**](B_Delineate.md) image segments zones of pixels with homogeneous features
+- [**Zones:**](B_Zones.md) Delineate image segments of pixels with homogeneous features
 
 - [**Mapping:**](B_Mapping.md) Classify pixels or zones according to their spectral and spatial properties
 
