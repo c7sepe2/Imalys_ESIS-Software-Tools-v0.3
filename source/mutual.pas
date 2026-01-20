@@ -20,6 +20,8 @@ uses
   Classes, Math, StrUtils, SysUtils, format;
 
 type
+  taIdf = array[0..3] of integer; //Position der Identifier in Dateinamen
+
   trPrd = record //Outlier in Zeitreihen
     Mea:double; //Mittelwert
     Vrz:double; //quadrierte Abweichung vom Mittelwert
@@ -34,63 +36,55 @@ type
   tra_Prd = array of tr_Prd;
   tpr_Prd = ^tr_Prd;
 
-  tArchive = class(tObject) //checked 241116
+  tArchive = class(tObject) //checked 251121
     private
-      function GetElevation(sXml:string):single;
-      function _ImportAster_(sArc:string):string;
-      function _ImportRapidEye_(sArc:string):string;
+      function CheckItem(sNme:string; iPst:integer; slItm:tStringList):boolean;
+      function CheckPeriod(sNme:string; iPst,iLow,iHig:integer):boolean;
+      function EqualStack(iStk:integer; slImg:tStringList):boolean;
+      function _GetNadir_(sXml:string):single;
+      procedure GetPeriod(var iHig,iLow:integer; sPrd:string);
+      function ShortName(aIdf:taIdf; sNme:string):string;
       function TarContent(sArc:string; slMsk:tStringList):tStringList;
-      procedure TarExtract(sArc:string; slNme:tStringList);
+      function TarExtract(sArc:string; slNme:tStringList):string;
+      function ValidDate(slImg:tStringList):boolean;
     public
-      procedure BandNames(slImg:tStringList);
       function ExtractFilter(sArc,sBnd:string):tStringList;
-      function ImportLandsat(rFrm:trFrm; sArc,sBnd:string):string;
-      function QueryDate(sDat,sPrd:string):boolean;
-      function QueryPosition(rImg,rRoi:trFrm):boolean;
-      function QueryQuality(rImg,rRoi:trFrm; var rSct:trFrm; sArc:string):single;
-      // vgl: Reduce._SentinelQuality_
-      function xCatalog(sMsk:string):tStringList;
-      procedure xCompile(iMrg:integer; rFrm:trFrm; sTrg:string; slImg:tStringList);
-      procedure xTransform(fPix:double; iEpg:integer; sArt:string; slImg:tStringList);
-  end;
+      function xBandsImport(bQlt:boolean; iSns:integer; sFrm,sDir:string):string;
+      function xSelectLandsat(bQlt:boolean; sArc,sFrq,sPrd,sTls:string):tStringList;
+      function xSelectSentinel(sArc,sFrq,sPrd,sTls:string):tStringList;
+      procedure xMergeBands(sTrg:string; slImg:tStringList);
+      procedure xImageImport(iEpg,iPix:integer; sArt,sFrm:string; slImg:tStringList);
+      function xQualityMask(sFrm,sDir:string):single;
+    end;
 
-  tGdal = class(tObject) //checked 241116
+  tGdal = class(tObject) //checked 251121
     private
-      procedure Warp(iCrs,iPix:integer; sImg,sTrg:string);
+      procedure Warp(iCrs,iPix:integer; rFrm:trFrm; sImg,sTrg:string);
     public
       procedure ExportShape(iPrj,iWrp:integer; sSrc,sTrg:string);
       procedure ExportTo(iBnd,iFmt:integer; sNme,sRes:string);
       procedure Hillshade(sDem:string);
-      procedure Import(iSgl,iHig,iLow:integer; rFrm:trFrm; sImg,sTrg:string);
       function ImageInfo(sImg:string):string;
       procedure ImportVect(iPrj:integer; sGeo:string);
       function OgrInfo(sVct:string):string;
       procedure Rasterize(iVal:integer; sAtr,sBnd,sVct:string);
       function SrsInfo(sImg:string):string;
+      procedure Translate(iSgl,iHig,iLow:integer; rFrm:trFrm; sImg,sTrg:string);
       procedure ZonalBorders(sIdx:string);
   end;
 
-  tRank = class(tObject)
+  tRank = class(tObject) //checked 250913
     private
-      procedure AccuracyMask(sRfz,sThm:string);
-      procedure _ChainLine_(faDns:tnSgl; iRds:integer);
-      function Combination(sMap,sRfz:string):tn2Int;
-      function Correlation(fxVal:tn2Sgl):tn2Sgl;
-      function Distribution(sImg,sRfz:string):tn3Sgl;
-      function MaxCover(ixCmb:tn2Int; lsSpc:tFPList):tnInt;
-      procedure _MeanLine_(faDns:tnSgl; iRds:integer);
-      procedure _Median_(faDns:tnSgl; iRds:integer);
-      function _NormDiff_(faDns:tnSgl):single;
-      function _Outlier(faDns:tnSgl; fLmt:single):single;
-      procedure Remap(iaLnk:tnInt; sMap:string);
-      procedure ReportOut(lsSpc:tFPList);
+      procedure _AccuracyMask_(sRfz,sThm:string);
+      function _Correlation(iMap,iRfz:integer; ixMap,ixRfz:tn2Byt):tn2Sgl;
+      function Distribution(iAtr,iMap,iSmp:integer; ixRfz:tn2Byt):tn2Sgl;
       procedure _SortByte_(iMap:integer; ixMap:tn2Byt);
-      procedure TableFormat(iFmt:integer; ixCnt:tn2Int; sRes:string);
+      function _Spearmann_(fxVal:tn2Sgl):tn2Sgl;
     public
-      procedure FieldToMap(iCrs:integer; sFld,sMap,sRfz:string);
-      procedure _xEqualize(iRds:integer; sImg:string);
-      procedure xScalarFit(bAcy:boolean; sImg,sRfz:string);
-      procedure xThemaFit(bAcy:boolean; sMap,sRfz:string);
+      function Percentil(faVal:tnSgl; fLmt:single; iHig:integer):single;
+      procedure _xCorrelation();
+      procedure xDistribution(iSmp:integer);
+      procedure xVectorReference(sFld,sVct:string);
   end;
 
   tSeparate = class(tObject)
@@ -109,7 +103,11 @@ type
   end;
 
 const
-  cuPrd: trPrd = (Mea:0; Vrz:0; Low:0; Hig:-1);
+  //Zuordnung: Sensor - Kachel - Frequenz - Datum
+  cmImd:taIdf = (1,2,3,4); //Imalys extrahierte Kanäle
+  cmLst:taIdf = (1,3,9,4); //Landsat Archive & Kanal-Namen
+  cmS2a:taIdf = (1,6,0,3); //Sentinel-2 Archive
+  cmS2b:taIdf = (0,1,3,2); //Sentinel-2 Kanal-Namen
 
 var
   Archive:tArchive;
@@ -120,7 +118,7 @@ var
 implementation
 
 uses
-  raster, thema, vector;
+  index, raster, thema, vector;
 
 // für tStringList.CustomSort, Datum "YYYYMMDD" am Ende des Namens
 
@@ -135,19 +133,23 @@ begin
   Result:=0
 end;
 
-{ sFloat transformiert einen String in das Single-Format und setzt bei Fehlern
-  die Variable "bErr". "bErr" kann cumulativ verwendet werden }
-
-function sFloat(var bErr:boolean; sLin:string):single;
+function DateBand(sl:tStringList; i1,i2:integer):integer;
+var
+  iHig,iLow:integer;
 begin
-  if TryStrToFloat(copy(sLin,succ(rPos('=',sLin)),$FF),Result)=false then
-    bErr:=True; //Flag setzen
+  iLow:=integer(pointer(sl.Objects[i1]));
+  iHig:=integer(pointer(sl.Objects[i2]));
+  if RightStr(sl[i1],8) < RightStr(sl[i2],8) then Result:=-1 else
+  if RightStr(sl[i1],8) > RightStr(sl[i2],8) then Result:=1 else
+    if iLow < iHig then Result:=-1 else
+    if iLow > iHig then Result:=1 else
+      Result:=0
 end;
 
-function _eFloat(var bErr:boolean; sLin:string):single;
+function Right10(sl:tStringList; i1,i2:integer):integer;
 begin
-  if TryStrToFloat(copy(sLin,succ(rPos('=',sLin)),$FF),Result) then
-    bErr:=False; //Fehler-Flag setzen
+  if RightStr(sl[i1],10) < RightStr(sl[i2],10) then Result:=-1 else
+  if RightStr(sl[i1],10) > RightStr(sl[i2],10) then Result:=1 else Result:=0
 end;
 
 function SpcCount(p1,p2:Pointer):integer;
@@ -168,6 +170,93 @@ begin
   if tprSpc(p1)^.Rfz>tprSpc(p2)^.Rfz then Result:=1 else
     if tprSpc(p1)^.Map<tprSpc(p2)^.Map then Result:=-1 else //nach vorne
     if tprSpc(p1)^.Map>tprSpc(p2)^.Map then Result:=1 else Result:=0;
+end;
+
+{ sFloat transformiert einen String in das Single-Format und setzt bei Fehlern
+  die Variable "bErr". "bErr" kann cumulativ verwendet werden }
+
+function sFloat(var bErr:boolean; sLin:string):single;
+begin
+  if TryStrToFloat(copy(sLin,succ(rPos('=',sLin)),$FF),Result)=false then
+    bErr:=True; //Flag setzen
+end;
+
+function _eFloat(var bErr:boolean; sLin:string):single;
+begin
+  if TryStrToFloat(copy(sLin,succ(rPos('=',sLin)),$FF),Result) then
+    bErr:=False; //Fehler-Flag setzen
+end;
+
+{ rAM löscht aus dem Klassen-Layer "sThm" alle Pixel, die nicht mit der
+  Referenz "sRfz" identisch sind. }
+
+procedure tRank._AccuracyMask_(sRfz,sThm:string);
+var
+  ixThm:tn2Byt=nil; //Klassen-Bild
+  ixRfz:tn2Byt=nil; //Referenzen-Bild
+  rHdr:trHdr; //Metadaten
+  Y,X:integer;
+begin
+  Header.Read(rHdr,sThm); //recodierte Cluster
+  ixThm:=Image.ReadThema(rHdr,sThm);
+  Header.Read(rHdr,sRfz); //Referenz als Raster
+  ixRfz:=Image.ReadThema(rHdr,sRfz);
+  for Y:=0 to high(ixThm) do
+    for X:=0 to high(ixThm[0]) do
+      if ixThm[Y,X]<>ixRfz[Y,X] then
+        ixThm[Y,X]:=0;
+  Image.WriteThema(ixThm,eeHme+cfMap);
+  Header.WriteThema(rHdr.Cnt,rHdr,rHdr.Fld,eeHme+cfMap);
+end;
+
+{ rCn bestimmt die Rang-Korrelation nach Spearmann für alle Kombinationen aus
+  zwei Zeilen in "fxVal" und gibt sie als Tabelle zurück.
+    rCn erzeugt eine Rang-Matrix "ixRnk" für alle Zeilen in "fxVal". "ixRnk"
+  hat dieselben Zeilen wie "fxVal". Die erste Spalte von "fxVal" ist
+  unterdrückt. Als Vorgabe nummeriert rCn jede "ixRnk"-Zeile fortlaufend. rVL
+  kopiert einzelne "fxVal"-Zeilen ohne die führende Null nach "faTmp" und
+  sortiert sie
+  zusammen mit derselben Zeile aus "ixRnk". rVL bestimmt für alle Kombinationen
+  aus zwei Zeilen die Korrelation nach Spaermann und gibt sie als Tabelle
+  [Referenz][Referenz] zurück. Die erste Zeile und die erste Spalte (Index=0)
+  sind nicht definiert }
+// Rangkorrelation = 1-6∑(x-y)²/n/(n²-1) (Spearmann) x,y=Rang n=Vergleiche
+
+function tRank._Spearmann_(
+  fxVal:tn2Sgl): //Mittelwerte[Referenz][Value]
+  tn2Sgl; //Rang-Korrelation, alle Referenz-Kombinationen
+var
+  faTmp:tnSgl=nil; //Zwischenlager
+  fFct:single; //Spearmann-Faktor
+  fRes:single; //Zwischenergebnis
+  iDim:integer; //Anzahl Kanäle
+  iSze:integer; //Byte pro Spektralkombination
+  ixRnk:tn2Int=nil; //Werte-Rangfolge, alle Referenzen & Kanäle
+  R,S,V:integer;
+begin
+  Result:=nil;
+  SetLength(ixRnk,length(fxVal),high(fxVal[0]));
+  for R:=1 to high(ixRnk) do //erste Zeile NICHT definiert!
+    for S:=0 to high(ixRnk[0]) do //alle Spalten verwendet!
+      ixRnk[R,S]:=succ(S); //fortlaufende Nummer (ab Eins)
+  iSze:=high(fxVal[0])*SizeOf(single); //Byte pro "fxVal[?]
+  iDim:=high(fxVal[0]); //Anzahl Kanäle
+  faTmp:=Tools.InitSingle(iDim,0); //Zwischenlager
+  for R:=1 to high(fxVal) do
+  begin
+    move(fxVal[R,1],faTmp[0],iSze); //Werte ohne erste Spalte
+    Reduce.IndexSort(ixRnk[R],faTmp); //"iaRnk" und "faTmp" verändert
+  end;
+  Result:=Tools.Init2Single(length(fxVal),length(fxVal),0); //alle Referenz-Kombinationen
+  fFct:=6/iDim/(sqr(iDim)-1); //Spearmann-Faktor
+  for R:=2 to high(fxVal) do //alle Referenz-Referenz-Kombinationen
+    for S:=1 to pred(R) do
+    begin
+      fRes:=0;
+      for V:=0 to pred(high(fxVal[0])) do
+        fRes+=sqr(ixRnk[R,V]-ixRnk[S,V]); //Summe quadrierte Rang-Differenzen
+      Result[S,R]:=1-fFct*fRes; //Rang-Korrelation
+    end;
 end;
 
 { sNz normalisiert alle Werte im Kanal "fxBnd" auf den Bereich 0.5±S*fFct. "S"
@@ -245,298 +334,6 @@ begin
       ixMap[Y,X]:=iaRfz[ixMap[Y,X]];
 end;
 
-procedure tRank.AccuracyMask(sRfz,sThm:string);
-{ rAM löscht aus dem Klassen-Layer "sThm" alle Pixel, die nicht mit der
-  Referenz "sRfz" identisch sind. }
-var
-  ixThm:tn2Byt=nil; //Klassen-Bild
-  ixRfz:tn2Byt=nil; //Referenzen-Bild
-  rHdr:trHdr; //Metadaten
-  Y,X:integer;
-begin
-  Header.Read(rHdr,sThm); //recodierte Cluster
-  ixThm:=Image.ReadThema(rHdr,sThm);
-  Header.Read(rHdr,sRfz); //Referenz als Raster
-  ixRfz:=Image.ReadThema(rHdr,sRfz);
-  for Y:=0 to high(ixThm) do
-    for X:=0 to high(ixThm[0]) do
-      if ixThm[Y,X]<>ixRfz[Y,X] then
-        ixThm[Y,X]:=0;
-  Image.WriteThema(ixThm,eeHme+cfAcy);
-  Header.WriteThema(rHdr.Cnt,rHdr,rHdr.Fld,eeHme+cfAcy);
-end;
-
-function tRank.Combination(
-  sMap:string; //Clusterung
-  sRfz:string): //Referenz
-  tn2Int; //Pixel pro Cluster x Referenz
-{ rCn zählt alle Referenz-Cluster-Kombinationen in den thematischen Bildern
-  "sRfz" und "sMap" und gibt sie als Tabelle[Mapping][Reference] zurück. Die
-  Bilder "sMap" und "sRfz" müssen deckungsgleich sein. rCn belegt die erste
-  Spalte der Tabelle mit den Pixeln pro Referenz un die erste Zeile mit den
-  Pixeln pro Cluster(Mapping). Result[0,0] gibt die Summe aller erfassten Pixel
-  zurück. rCn speichert die Tabelle unverändert als tab-getrennten Text. }
-const
-  cHdr = 'rCn: Mapping and reference differ in size or format!';
-var
-  iMap:integer; //höchste Cluster-ID
-  ixMap:tn2Byt=nil; //Clusterung als Bild
-  ixRfz:tn2Byt=nil; //Referenzen als Bild
-  rHdr:trHdr; //Metadaten
-  M,R,X,Y:integer;
-begin
-  Result:=nil;
-  Header.Read(rHdr,sMap); //Clusterung
-  if not Header.BandCompare(rHdr,sRfz) then Tools.ErrorOut(2,cHdr);
-  //Projektion?
-  ixMap:=Image.ReadThema(rHdr,sMap);
-  iMap:=rHdr.Cnt; //höchste Cluster-ID
-  Header.Read(rHdr,sRfz); //Referenz
-  ixRfz:=Image.ReadThema(rHdr,sRfz);
-  Result:=Tools.Init2Integer(succ(iMap),succ(rHdr.Cnt),0);
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-      if ixRfz[Y,X]>0 then
-        inc(Result[ixMap[Y,X],ixRfz[Y,X]]); //Kombinationen
-  for M:=1 to high(Result) do
-    for R:=1 to high(Result[0]) do
-    begin
-      Result[M,0]+=Result[M,R]; //Pixel pro Cluster (Mapping)
-      Result[0,R]+=Result[M,R]; //Pixel pro Referenz
-      Result[0,0]+=Result[M,R]; //alle Pixel
-    end;
-end;
-
-{ rDn bestimmt Mittelwert und Varianz aller Kanäle in den Bilddaten "sImg"
-  bezogen auf die referenzierten Flächen in "sRfz" und gibt das Ergebnis als
-  Tabelle zurück. }
-{ rDn bildet Summe und Quadrat-Summe aller Werte in den verschiedenen Kanälen
-  innerhalb der verschiedenen Referenzen und berechnet damit Mittelwert und
-  Varianz für alle Referenz-Kanal Kombinationen. rDn gibt die Varianz als
-  doppelte Abweichung zurück. Die Indices sind natürliche Zahlen ab Eins, die
-  erste Zeile und erste Spalte ist nicht definiert! }
-// Varianz = (∑x²-(∑x)²/n)/(n-1)
-
-function tRank.Distribution(
-  sImg:string; //Werte in scalarem Bild
-  sRfz:string): //Klassen-Layer (Clusterung)
-  tn3Sgl; //[Mittwelwert|Varianz][Referenzen][Kanäle]
-const
-  cNeg = 'rDn: Negative results for variance!';
-var
-  bNgv:boolean=False;
-  fVrz:single; //Zwischenergebnis
-  fxVal:tn2Sgl=nil; //Kanal aus Scalarem Bild
-  fzVrz:tn2Sgl=nil; //Zeiger auf Varianz
-  fzMdn:tn2Sgl=nil; //Zeiger auf Mittelwert
-  iaCnt:tnInt=nil; //Pixel pro Cluster
-  iCnt:integer; //Anzahl Cluster
-  ixRfz:tn2Byt=nil; //Clusterung oder Klassen-Layer
-  rHdr:trHdr; //Metadaten
-  B,R,X,Y:integer;
-begin
-  //sMap = Klassen?
-  //sVal = Scalar?
-  //gleiche Größe?
-  Header.Read(rHdr,sRfz); //Metadaten Cluster
-  ixRfz:=Image.ReadThema(rHdr,sRfz); //Cluster, Klassen
-  iaCnt:=Tools.InitInteger(succ(rHdr.Cnt),0); //Pixel pro Cluster
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-      inc(iaCnt[ixRfz[Y,X]]); //Pixel pro Referenz
-
-  iCnt:=rHdr.Cnt; //höchte Cluster-ID
-  Header.Read(rHdr,sImg); //Metadaten Scalare
-  Result:=Tools.Init3Single(2,succ(iCnt),succ(rHdr.Stk),0);
-  fzMdn:=Result[0]; //Zeiger
-  fzVrz:=Result[1];
-  for B:=1 to rHdr.Stk do //alle Kanäle
-  begin
-    fxVal:=Image.ReadBand(pred(B),rHdr,sImg); //scalarer Kanal
-    for Y:=0 to pred(rHdr.Lin) do
-      for X:=0 to pred(rHdr.Scn) do
-      begin
-        fzVrz[ixRfz[Y,X],B]+=sqr(fxVal[Y,X]);
-        fzMdn[ixRfz[Y,X],B]+=fxVal[Y,X];
-      end;
-  end;
-  for R:=1 to iCnt do //alle Referenzen
-    for B:=1 to rHdr.Stk do
-    begin
-      if iaCnt[R]>1
-        then fVrz:=(fzVrz[R,B]-(sqr(fzMdn[R,B])/iaCnt[R]))/(pred(iaCnt[R]))
-        else fVrz:=0;
-      if fVrz>=0
-        then fzVrz[R,B]:=sqrt(fVrz)*2 //Doppelte Abweichung
-        else bNgv:=True; //Rundungsfehler!
-      if iaCnt[R]>0 then
-        fzMdn[R,B]:=fzMdn[R,B]/iaCnt[R];
-    end;
-  if bNgv then Tools.ErrorOut(2,cNeg+sRfz);
-  Tools.HintOut(true,'Rank.Distribution: memory');
-end;
-
-function tRank.MaxCover(
-  ixCmb:tn2Int; //Cluster-Referenz-Kombinationen [Pixel]
-  lsSpc:tFPList): //Kombinationen als Liste
-  tnInt; //Klassen für Cluster aus Referenzen
-{ rSy gibt ein Array mit den häufigsten Kombination zwischen Zeilen (Clustern)
-  und Spalten (Referenzen) in "ixCmb" zurück. rSy erwartet in "ixCmb[0,0]" die
-  Anzahl aller referenzierten Pixel. }
-{ rSy erzeugt aus der Tabelle "ixCmb" eine Liste mit allen Cluster-Referenz-
-  Kombinationen, sortiert sie nach der Fläche der Cluster in einer Referenz
-  und sortiert sie nach der gemeinsamen Fläche "pSpc^.Prt". rSy gibt für jeden
-  Cluster eine ID zurück, eine Referenz kann durch viele Cluster abgebildet
-  werden. }
-var
-  pSpc:tprSpc=nil; //Zeiger auf Kombination
-  I,M,R:integer;
-begin
-  Result:=Tools.InitInteger(length(ixCmb),0); //beste Referenz pro Cluster
-  for M:=1 to high(ixCmb) do
-    for R:=1 to high(ixCmb[0]) do
-      if ixCmb[M,R]>0 then
-      begin
-        new(pSpc);
-        pSpc^.Rfz:=R;
-        pSpc^.Map:=M;
-        pSpc^.Val:=ixCmb[M,R]/ixCmb[0,0]; //Anteil Cluster in Referenz
-        lsSpc.Add(pSpc)
-      end;
-  lsSpc.Sort(@SpcValues); //nach Fläche sortieren
-  for I:=0 to pred(lsSpc.Count) do
-    with tprSpc(lsSpc[I])^ do
-      if Result[Map]=0
-        then Result[Map]:=Rfz //Cluster mit Referenz verknüpfen
-        else Val:=-Val; //Fehler-Markierung
-end;
-
-procedure tRank.Remap(
-  iaLnk:tnInt; //Klassen-ID aus Referenz
-  sMap:string); //Clusterung
-{ rRp ersetzt die Klassen in "sMap" mit der Transformation "iaLnk" durch neue
-  Werte und speichert das Ergebnis als "thema" im Home-Verzeichnis. rRp liest
-  und schreibt Bilder im ENVI-Byte-Format (Klassen). }
-var
-  ixMap:tn2Byt=nil; //Klassen-Bild
-  rHdr:trHdr; //Metadaten
-  sFld:string=''; //Feldnamen
-  Y,X:integer;
-begin
-  Header.Read(rHdr,sMap); //Clusterung
-  ixMap:=Image.ReadThema(rHdr,sMap);
-  for Y:=0 to high(ixMap) do
-    for X:=0 to high(ixMap[0]) do
-      ixMap[Y,X]:=iaLnk[ixMap[Y,X]];
-  Image.WriteThema(ixMap,eeHme+cfThm);
-  sFld:=Header.ReadLine('class names',eeHme+cfRfz);
-  Header.WriteThema(MaxIntValue(iaLnk),rHdr,sFld,eeHme+cfThm);
-end;
-
-procedure tRank.ReportOut(
-  lsSpc:tFPList); //Cluster-Referenz-Verteilung
-{ rRO überträgt die Cluster-Referenz-Combination "lsSpc" in einen formatierten
-  Text. Dazu fassr rRO alle Einträge mir gleicher Referenz-ID zu einer Zeile
-  zusammen. Das Ergebnis enthält die Summe der richtig und falsch verknüpften
-  Pixel und die IDs der beteiligten Cluster. rRO unterdrückt bei den ID's
-  Cluster mit weniger als 0.1% Anteil, die Flächen-Summen sind vollständig. }
-var
-  fErr:single=0; //Anteil falsch
-  fHit:single=0; //Anteil richtig
-  sErr:string=''; //Cluster-IDs falsch
-  sHit:string=''; //Cluster-IDs richtig
-
-function lLineOut(iRfz:integer):string;
-begin
-  if length(sErr)>0 then delete(sErr,1,1); //führendes Komma
-  if length(sHit)>0 then delete(sHit,1,1);
-  Result:=IntToStr(iRfz)+#9+
-    FloatToStrF(fHit*100,ffFixed,7,1)+#9+
-    FloatToStrF(fErr*100,ffFixed,7,1)+#9+
-    FloatToStrF((fHit+fErr)*100,ffFixed,7,1)+#9+
-    '('+sHit+') – ('+sErr+')';
-  fHit:=0; fErr:=0;
-  sHit:=''; sErr:='';
-end;
-
-var
-  fNgv:single=0; //Summe negative Anteile
-  fPst:single=0; //Summe positive Anteile
-  slRes:tStringList=nil; //Ergebnis als Text
-  I:integer;
-begin
-  try
-    slRes:=tStringList.Create;
-    slRes.Add('Refz-ID'#9'Link %'#9'Error %'#9'Bilanz %'#9'Cluster-IDs');
-    lsSpc.Sort(@SpcRfzMap); //Nach Referenz und Fläche sortieren
-    for I:=0 to pred(lsSpc.Count) do
-    with tprSpc(lsSpc[I])^ do
-    begin
-      if (I>0) and (tprSpc(lsSpc[pred(I)])^.Rfz<Rfz) then
-        slRes.Add(lLineOut(tprSpc(lsSpc[pred(I)])^.Rfz));
-      if Val>0
-        then fHit+=Val
-        else fErr+=Val; //Flächen-Anteile richtig / falsch
-      if Val>1/1000 then sHit+=','+IntToStr(Map) else
-      if Val<-1/1000 then sErr+=','+IntToStr(Map); //Cluster-ID richtig / falsch
-      if Val>0
-        then fPst+=Val
-        else fNgv+=Val;
-    end;
-    slRes.Add(lLineOut(tprSpc(lsSpc.last)^.Rfz));
-    slRes.Add('Sum'+
-      #9+FloatToStrF(fPst*100,ffFixed,7,1)+
-      #9+FloatToStrF(fNgv*100,ffFixed,7,1)+
-      #9+FloatToStrF((fPst+fNgv)*100,ffFixed,7,1));
-    slRes.SaveToFile(eeHme+cfSpc);
-  finally
-    slRes.Free;
-  end
-end;
-
-procedure tRank.TableFormat(
-  iFmt:integer; //0=unverändert, 1=Anteile Bild, 2=Anteile Cluster, negativ=Stellen als Float
-  ixCnt:tn2Int; //Integer-Tabelle
-  sRes:string); //Dateiname Ergebnis als Text
-{ rTF schreibt eine Tabelle als tab-getrennten Text. rTF unterstellt, dass die
-  erste Zeile und erste Spalte Hilfswerte enthalten und ersetzt sie durch die
-  passenden Indices. }
-{ Mit "iFmt<0" interpretiert rTF "ixCnt" als Single-Matrix und schreibt alle
-  Werte mit abs(iFmt) Stellen. Mit "iFmt=0" schreibt rTF Integers. Mit "iFmt>0"
-  normalisiert rTF die Werte auf die Summe der Zeilen, Spalten oder aller Werte.
-  Dazu muss die erste Zeile bzw Spalte die Summen enthalten und die Summe aller
-  Werte in "ixCnt[0,0]" stehen. In die Ausgabe ersetzt rTF in jedem Fall die
-  erste Zeile und die erste Spalte durch die passenden Indices. }
-var
-  sLin:string; //aktuelle Textzeile
-  slOut:tStringList=nil;
-  C,R:integer;
-begin
-  try
-    slOut:=tStringList.Create;
-    sLin:='0'; //erste Zelle
-    for C:=1 to high(ixCnt[0]) do
-      sLin+=#9+IntToStr(C); //erste Zeile = Indices
-    slOut.Add(sLin);
-    for R:=1 to high(ixCnt) do //Zeilen
-    begin
-      sLin:=IntToStr(R); //erste Spalte = Index
-      for C:=1 to high(ixCnt[0]) do //Werte in Spalten
-        case iFmt of
-          0:sLin+=#9+IntToStr(ixCnt[R,C]); //unverändert
-          1:sLin+=#9+FloatToStrF(ixCnt[R,C]/ixCnt[0,0]*1000,ffFixed,7,0); //Anteil Gesamtfräche
-          2:sLin+=#9+FloatToStrF(ixCnt[R,C]/ixCnt[0,C],ffFixed,7,0); //Anteil Spalte
-          3:sLin+=#9+FloatToStrF(ixCnt[R,C]/ixCnt[R,0],ffFixed,7,0); //Anteil Zeile
-          else sLin+=#9+FloatToStrF(tn2Sgl(ixCnt)[R,C],ffFixed,7,-iFmt); //Werte als Float, "iFmt" Stellen
-        end;
-      slOut.Add(sLin);
-    end;
-    slOut.SaveToFile(sRes)
-  finally
-    slOut.Free;
-  end;
-end;
-
 { pIV konvertiert ein bekanntes Vektor-Format in eine CSV-Datei und speichert
   das Ergebnis als "vector.csv" im WKT-Format. Mit "iPrj>0" projiziert pIV
   dabei nach "iPrj". "iPrj" muss als EPSG-Code übergeben werden. }
@@ -552,9 +349,10 @@ const
 var
   slCmd:tStringList=nil; //Parameter als Liste
 begin
-  if not FileExists(sGeo) then Tools.ErrorOut(2,cSrc+sGeo);
+  if not FileExists(sGeo) then Tools.ErrorOut(3,cSrc+sGeo);
   DeleteFile(eeHme+cfVct);
   DeleteFile(eeHme+cfVct+'t');
+  DeleteFile(eeHme+ChangeFileExt(cfVct,'.prj'));
   try
     slCmd:=TStringList.Create;
     slCmd.Add('-f'); //Output-File-Format
@@ -564,17 +362,20 @@ begin
     slCmd.Add('GEOMETRY=AS_WKT'); //Geometrie als WKT
     slCmd.Add('-lco');
     slCmd.Add('CREATE_CSVT=YES'); //Format der Attribute
-    slCmd.Add('-t_srs'); //projizieren in Format
-    slCmd.Add('EPSG:'+IntToStr(iPrj)); //als EPSG
+    if iPrj>0 then
+    begin
+      slCmd.Add('-t_srs'); //projizieren in Format
+      slCmd.Add('EPSG:'+IntToStr(iPrj)); //als EPSG
+    end;
     slCmd.Add(eeHme+cfVct); //Ziel = ".imalys/vector.csv"
     slCmd.Add(sGeo); //Quelle
     Tools.OsExecute(eeGdl+'ogr2ogr',slCmd);
     Tools.ErrorLog('gIV:'); //Exceptions speichern
   finally
     slCmd.Free;
-    if not FileExists(eeHme+cfVct) then Tools.ErrorOut(2,cGdl+sGeo);
   end;
-  Tools.HintOut(true,'GDAL.Import: '+cfVct);
+  if not FileExists(eeHme+cfVct) then Tools.ErrorOut(3,cGdl+sGeo);
+  Tools.HintOut(true,'ImportVect: '+ExtractFileName(sGeo));
 end;
 
 { gRz brennt Vektor-Polygone in das Vorbild "sBnd". Nur der erste Kanal wird
@@ -592,7 +393,7 @@ const
 var
   slCmd: tStringList=nil; //Befehls-Parameter für gdal
 begin
-  if not FileExists(sBnd) then Tools.ErrorOut(2,cSrc+sBnd);
+  if not FileExists(sBnd) then Tools.ErrorOut(3,cSrc+sBnd);
   try
     slCmd:=TStringList.Create;
     if sAtr='' then
@@ -621,147 +422,6 @@ begin
   end;
 end;
 
-{ rCe erzeugt ein Klassen-Bild "reference" aus der Vektor-Geometrie "sRfz" und
-  dem Vektor-Attribut "sFld". Raster und Abdeckung sind identisch mit "sMap".
-  rCe importiert das Vektor-Vorbild als CSV, klassifiziert das Feld "sFld",
-  erweitert die Attribute in der CSV-Kopie um eine fortlaufende Klassen-ID und
-  verwendet die ID als Wert für das Bild. rCe interpretiert die Werte in "sFld"
-  als Strings und übernimmt sie als Klassen-Namen. rCe ignoriert Vektoren
-  außerhalb von "sMap". }
-
-procedure tRank.FieldToMap(
-  iCrs:integer; //Projektion als EPSG
-  sFld:string; //Feldname für Referenz-ID in Vektor-Tabelle
-  sMap:string; //Klassifikation (Testobjekt)
-  sRfz:string); //Klassen-Referenz (Vektoren)
-var
-  rHdr:trHdr; //Vorbild (Clusterung)
-  slRfz:tStringList=nil; //Klassen-Namen aus Referenz
-  sNme:string='NA'; //Klassen-Namen, kommagetrennt
-  I:integer;
-begin
-  Gdal.ImportVect(iCrs,sRfz); //Referenz als "vector.csv speichern, Umprojektion!
-  try
-    slRfz:=Table.AddThema(sFld); //Namen der Referenz-Klassen, Klassen-IDs in "focus.csv"
-    Header.Read(rHdr,sMap); //Dimension Vorbild
-    Image.WriteZero(rHdr.Scn,rHdr.Lin,eeHme+cfRfz); //leere Kopie erzeugen
-    for I:=1 to pred(slRfz.Count) do
-      sNme+=','+slRfz[I];
-    Header.WriteThema(pred(slRfz.Count),rHdr,sNme,eeHme+cfRfz); //Kassen-Header dazu
-  finally
-    slRfz.Free;
-  end;
-  Gdal.Rasterize(0,sFld+'-ID',eeHme+cfRfz,eeHme+cfFcs); //Klassen-IDs einbrennen
-end;
-
-{ rCn bestimmt die Rang-Korrelation nach Spearmann für alle Kombinationen aus
-  zwei Zeilen in "fxVal" und gibt sie als Tabelle zurück.
-    rCn erzeugt eine Rang-Matrix "ixRnk" für alle Zeilen in "fxVal". "ixRnk"
-  hat dieselben Zeilen wie "fxVal". Die erste Spalte von "fxVal" ist
-  unterdrückt. Als Vorgabe nummeriert rCn jede "ixRnk"-Zeile fortlaufend. rVL
-  kopiert einzelne "fxVal"-Zeilen ohne die führende Null nach "faTmp" und
-  sortiert sie
-  zusammen mit derselben Zeile aus "ixRnk". rVL bestimmt für alle Kombinationen
-  aus zwei Zeilen die Korrelation nach Spaermann und gibt sie als Tabelle
-  [Referenz][Referenz] zurück. Die erste Zeile und die erste Spalte (Index=0)
-  sind nicht definiert }
-// Rangkorrelation = 1-6∑(x-y)²/n/(n²-1) (Spearmann) x,y=Rang n=Vergleiche
-
-function tRank.Correlation(
-  fxVal:tn2Sgl): //Mittelwerte[Referenz][Value]
-  tn2Sgl; //Rang-Korrelation, alle Referenz-Kombinationen
-var
-  faTmp:tnSgl=nil; //Zwischenlager
-  fFct:single; //Spearmann-Faktor
-  fRes:single; //Zwischenergebnis
-  iDim:integer; //Anzahl Kanäle
-  iSze:integer; //Byte pro Spektralkombination
-  ixRnk:tn2Int=nil; //Werte-Rangfolge, alle Referenzen & Kanäle
-  R,S,V:integer;
-begin
-  Result:=nil;
-  SetLength(ixRnk,length(fxVal),high(fxVal[0]));
-  for R:=1 to high(ixRnk) do //erste Zeile NICHT definiert!
-    for S:=0 to high(ixRnk[0]) do //alle Spalten verwendet!
-      ixRnk[R,S]:=succ(S); //fortlaufende Nummer (ab Eins)
-  iSze:=high(fxVal[0])*SizeOf(single); //Byte pro "fxVal[?]
-  iDim:=high(fxVal[0]); //Anzahl Kanäle
-  faTmp:=Tools.InitSingle(iDim,0); //Zwischenlager
-  for R:=1 to high(fxVal) do
-  begin
-    move(fxVal[R,1],faTmp[0],iSze); //Werte ohne erste Spalte
-    Reduce.IndexSort(ixRnk[R],faTmp); //"iaRnk" und "faTmp" verändert
-  end;
-  Result:=Tools.Init2Single(length(fxVal),length(fxVal),0); //alle Referenz-Kombinationen
-  fFct:=6/iDim/(sqr(iDim)-1); //Spearmann-Faktor
-  for R:=2 to high(fxVal) do //alle Referenz-Referenz-Kombinationen
-    for S:=1 to pred(R) do
-    begin
-      fRes:=0;
-      for V:=0 to pred(high(fxVal[0])) do
-        fRes+=sqr(ixRnk[R,V]-ixRnk[S,V]); //Summe quadrierte Rang-Differenzen
-      Result[S,R]:=1-fFct*fRes; //Rang-Korrelation
-    end;
-end;
-
-{ rSF bestimmt eine Rang-Korrelation zwischen allen Kanälen im Import und der
-  Referenz "sRfz". rSF gibt Mittelwerte, Abweichung (2@) und Korrelation als
-  Text-Tabellen zurück. }
-
-procedure tRank.xScalarFit(
-  bAcy:boolean; //Mittelwert und Abweichung als Tabelle
-  sImg:string; //Vorbild
-  sRfz:string); //Referenz als Raster-Bild
-var
-  fxDst:tn3Sgl=nil; //Mittelwert+Variank für alle Kombinationen
-  fxRnk:tn2Sgl=nil; //Rang-Korrelation für alle Kombinationen
-begin
-  fxDst:=Rank.Distribution(sImg,sRfz); //Mittelwert, Varianz in Referenzen
-  if bAcy then TableFormat(-3,tn2Int(fxDst[0]),eeHme+'meanvalues.tab');
-  if bAcy then TableFormat(-3,tn2Int(fxDst[1]),eeHme+'deviation.tab');
-  fxRnk:=Correlation(fxDst[0]); //Korrelation für alle Referenzen
-  TableFormat(-2,tn2Int(fxRnk),eeHme+'correlation.tab');
-end;
-
-{ rTF überträgt Klassen-IDs der Referenz "sRfz" auf die Clusterung "sMap" und
-  speichert das Ergebnis als "thema". Die Referenzen müssen als Raster-Layer
-  verfügbar sein. }
-{ rTF zählt die Cluster-Referenz-Kombinationen aller referenzierten Pixel in
-  "ixCmb", erzeugt eine Liste "lsSpc" der C/R-Kombinationen, sortiert sie nach
-  der Fläche der Cluster in den Referenzen und vergibt für alle Cluster die ID
-  der Referenz mit der größten Fläche. Mit "bAcy=true" speichert rTF "ixCmb"
-  als "combination", eine Zusammenfassung der Liste "lsSpc" als "specificity"
-  und einen Klassen-Layer "accuracy", in dem nur korrekt abgebildete Referenzen
-  sichtbar sind. }
-
-procedure tRank.xThemaFit(
-  bAcy:boolean; //Accuracy-Kontrollen erzeugen
-  sMap,sRfz:string); //Cluster, Referenz als thematisches Bild
-var
-  iaLnk:tnInt=nil; //referenzierte Klassen-IDs
-  ixCmb:tn2Int=nil; //Anzahl Cluster-Referenz-Kombinationen
-  lsSpc:tFPList=nil; //Kombinationen nach Häufigkeit
-  I:integer;
-begin
-  //Projektion?
-  try
-    ixCmb:=Combination(sMap,sRfz); //Cluster-Referenz-Kombinationen + Summen
-    lsSpc:=tFPList.Create; //Cluster-Klassen-Kombinationen
-    iaLnk:=MaxCover(ixCmb,lsSpc); //Cluster-IDs aus Referenz
-    Remap(iaLnk,sMap); //Cluster-IDs durch Referenz ersetzen
-    if bAcy then
-    begin
-      ReportOut(lsSpc); //Kombinationen als Text
-      TableFormat(0,ixCmb,eeHme+cfCbn); //als Text-Tabelle
-      AccuracyMask(sRfz,eeHme+cfThm) //Filter für Cluster=Referenz
-    end;
-  finally
-    for I:=0 to pred(lsSpc.Count) do
-      dispose(tprSpc(lsSpc[I])); //Speicher freigeben
-    lsSpc.Free;
-  end;
-end;
-
 { gII extrahiert Metadaten aus dem Bild "sImg" und aktualisiert bei Bedarf die
   Statistik. Zur Statistik gehören Grauwert-Histogramme für alle Kanäle. Das
   Ergebnis ist formatierter Text. }
@@ -774,7 +434,7 @@ var
   slPrm: tStringList=nil; //Parameter-Liste
 begin
   Result:='';
-  if not FileExists(sImg) then Tools.ErrorOut(2,cImg+sImg);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cImg+sImg);
   try
     slPrm:=TStringList.Create;
     //slPrm.Add('-stats'); //bei Bedarf Statistik erzeugen
@@ -784,7 +444,7 @@ begin
     Tools.OsExecute(eeGdl+'gdalinfo',slPrm); //modal ausführen
     Result:=Tools.GetOutput(Tools.prSys); //GDAL Image Information (Text)
     Tools.ErrorLog('gII'); //Exceptions speichern
-    if length(Result)=0 then Tools.ErrorOut(2,cGdl);
+    if length(Result)=0 then Tools.ErrorOut(3,cGdl);
   finally
     slPrm.Free;
   end;
@@ -814,8 +474,8 @@ begin
   finally
     slCmd.Free;
   end;
-  if FileExists(sIdx+cShp)=False then Tools.ErrorOut(2,cRes+sIdx+cShp);
-  Tools.HintOut(true,'gdal.ZoneBorders: '+ExtractFileName(sIdx));
+  if FileExists(sIdx+cShp)=False then Tools.ErrorOut(3,cRes+sIdx+cShp);
+  Tools.HintOut(true,'ZonalBorders: '+ExtractFileName(sIdx));
 end;
 
 { tGET kapselt den Befehl GDAL_Translate. tGET speichert das Bild "sNme" als
@@ -836,7 +496,7 @@ const
 var
   slCmd: TStringList=nil; //Parameter
 begin
-  if (iFmt<1) or (iFmt>5) then Tools.ErrorOut(2,cFmt+IntToStr(iFmt));
+  if (iFmt<1) or (iFmt>5) then Tools.ErrorOut(3,cFmt+IntToStr(iFmt));
   try
     slCmd:=TStringList.Create;
     if iFmt>1 then slCmd.Add('-ot'); //Pixelformat erwarten
@@ -849,7 +509,7 @@ begin
     end;
     if iBnd>0 then slCmd.Add('-b'); //bestimmten Kanal verwenden
     if iBnd>0 then slCmd.Add(IntToStr(iBnd)); //Kanal-Nummer
-{   TODO: Gdal.ExportTo könnte mit -expand eine Palette ermöglichen. }
+    { todo: [Gdal.ExportTo] könnte mit -expand eine Palette ermöglichen. }
     slCmd.Add(sNme); //Vorbild
     slCmd.Add(sRes); //Ergebnis
     Tools.OsExecute(eeGdl+'gdal_translate',slCmd);
@@ -857,8 +517,8 @@ begin
   finally
     slCmd.Free;
   end;
-  if FileExists(sRes)=False then Tools.ErrorOut(2,cRes+sRes);
-  Tools.HintOut(true,'GDAL.Export: '+ExtractFileName(sRes));
+  if FileExists(sRes)=False then Tools.ErrorOut(3,cRes+sRes);
+  Tools.HintOut(true,'ExportTo: '+ExtractFileName(sRes));
 end;
 
 procedure tSeparate.Regression(
@@ -935,8 +595,8 @@ end;
   Werte linear zu positiven Werten. }
 
 procedure tSeparate.xPrincipal(
-  iDim: integer; //Maximum Dimensionen
-  sImg: string); //Pfadname Vorbild
+  iDim:integer; //Maximum Dimensionen
+  sImg:string); //Pfadname Vorbild
 const
   //cDim = '[Maximum Dimension] input must be larger than 0!';
   cFex = 'sPl: Image not found: ';
@@ -944,14 +604,13 @@ const
 var
   fxBnd:Tn2Sgl=nil; //Basis-Kanal für erste Hauptkomponente
   fxCmp:Tn2Sgl=nil; //Vergleichs-Kanal
-  sBnd:string=''; //Kanal-Namen, kommagetrennt
   B,C:integer;
 begin
-  if not FileExists(sImg) then Tools.ErrorOut(2,cFex+sImg);
-  //if iDim<1 then Tools.ErrorOut(2,cDim);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cFex+sImg);
+  //if iDim<1 then Tools.ErrorOut(3,cDim);
   iDim:=max(iDim,1); //mindestens erste Hauptkomponente
   Header.Read(rcHdr,sImg); //Header wird verändert!
-  if rcHdr.Stk<2 then Tools.ErrorOut(2,cStk);
+  if rcHdr.Stk<2 then Tools.ErrorOut(3,cStk);
   iDim:=min(iDim,rcHdr.Stk); //maximum Komponenten
   Image.WriteBand(Tools.Init2Single(rcHdr.Lin,rcHdr.Scn,0),0,eeHme+cfPca); //leere Kachel für 1. Kanal
 
@@ -963,20 +622,18 @@ begin
       fxCmp:=Image.ReadBand(B,rcHdr,sImg); //Vergleichs-Kanal
       Regression(fxBnd,fxCmp); //Regression für Kanäle C/B
       Rotation(fxBnd,fxCmp); //maximale Ausdehnung für "fxBnd"
-      Filter.ValueMove(-Tools.MinBand(fxBnd),fxCmp); //alle Werte positiv machen
+      Filter.MoveValue(-Tools.MinBand(fxBnd),fxCmp); //alle Werte positiv machen
       Image.WriteBand(fxCmp,B,eeHme+cfPca); //Ergebnis als Zwischenlager für "Reste"
       write('.') //Fortschritt
     end;
     write(#13);
-    Filter.ValueMove(-Tools.MinBand(fxBnd),fxBnd); //alle Werte positiv machen
+    Filter.MoveValue(-Tools.MinBand(fxBnd),fxBnd); //alle Werte positiv machen
     Image.WriteBand(fxBnd,C,eeHme+cfPca); //Ergebnis "C" dauerhaft speichern
     sImg:=eeHme+cfPca; //ab jetzt "Reste"-Kanäle als Vorbild
-    Tools.HintOut(true,'Separate.Principal: '+IntToStr(succ(C))+'/'+IntToStr(iDim)+
-      ': '+cfPca);
+    Tools.HintOut(true,'Principal: '+IntToStr(succ(C))+'/'+
+      IntToStr(iDim)+': '+cfPca);
   end;
-  for C:=1 to iDim do
-    sBnd+='PC-'+IntToStr(C)+#10; //Kanal-Bezeichner
-  Header.WriteMulti(rcHdr,sBnd,sImg);
+  Header.WriteMulti(iDim,iDim,rcHdr,'',sImg);
 end;
 
 { fOI extrahiert die Metadaten aus "sVct" und gibt sie als Text zurück. fOI
@@ -989,7 +646,7 @@ const
 var
   slCmd:tStringList=nil; //Parameter als Liste
 begin
-  if not FileExists(sVct) then Tools.ErrorOut(2,cSrc+sVct);
+  if not FileExists(sVct) then Tools.ErrorOut(3,cSrc+sVct);
   try
     slCmd:=TStringList.Create;
     slCmd.Add('-al'); //alle Layer anzeigen ← für Vergleich mit CSV-Version
@@ -998,7 +655,7 @@ begin
     Tools.OsExecute(eeGdl+'ogrinfo',slCmd);
     Result:=Tools.GetOutput(Tools.prSys); //GDAL Image Information (Text)
     Tools.ErrorLog('gOI:'); //Exception speichern
-    if length(Result)=0 then Tools.ErrorOut(2,cGdl);
+    if length(Result)=0 then Tools.ErrorOut(3,cGdl);
   finally
     slCmd.Free;
   end;
@@ -1016,7 +673,7 @@ var
   slPrm: tStringList=nil; //Parameter-Liste
 begin
   Result:='';
-  if not FileExists(sImg) then Tools.ErrorOut(2,cImg+sImg);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cImg+sImg);
   try
     slPrm:=TStringList.Create;
     slPrm.Add('-e'); //EPSG-Code zurückgeben
@@ -1045,8 +702,8 @@ const
 var
   slCmd: tStringList=nil; //Befehls-Parameter für gdal
 begin
-  if not FileExists(eeHme) then Tools.ErrorOut(2,cHme);
-  if not FileExists(sDem) then Tools.ErrorOut(2,cSrc+sDem);
+  if not FileExists(eeHme) then Tools.ErrorOut(3,cHme);
+  if not FileExists(sDem) then Tools.ErrorOut(3,cSrc+sDem);
   try
     slCmd:=TStringList.Create;
     slCmd.Add('hillshade'); //Modus
@@ -1059,7 +716,7 @@ begin
   finally
     slCmd.Free;
   end;
-  if not FileExists(eeHme+cfHse) then Tools.ErrorOut(2,cRes+eeHme+cfHse);
+  if not FileExists(eeHme+cfHse) then Tools.ErrorOut(3,cRes+eeHme+cfHse);
 end;
 
 { aTC gibt eine Liste aller Dateinamen zurück, die im Archiv "sArc" gespeichert
@@ -1081,7 +738,7 @@ var
   B,R:integer;
 begin
   Result:=nil;
-  if not FileExists(sArc) then Tools.ErrorOut(2,cArc+sArc);
+  if not FileExists(sArc) then Tools.ErrorOut(3,cArc+sArc);
   try
     slPrm:=tStringList.Create;
     slPrm.Add('-t'); //liste erzeugen
@@ -1114,14 +771,24 @@ end;
   Verzeichnis gespeichert. }
 { ES GIBT "CPIO" FÜR ARCHIVIERTE DATEIEN }
 
-procedure tArchive.TarExtract(
+function tArchive.TarExtract(
   sArc:string; //Archiv-Name
-  slNme:tStringList); //gewählte Namen im Archiv
+  slNme:tStringList): //gewählte Kanäle im Archiv
+  string; //Verzeichnis mit extrahierten Kanälen
 const
+  cArc='aTE: Archive name does not fit Landsat convention! ';
+  cDir='aTE: Unable to create import directory: ';
   cCmd = 'tar';
 var
+  iSze:integer=0; //ausgewählte Buchstaben am Anfang des Dateinamens
   slPrm:tStringList=nil; //Parameter für "tar"-Befehl
 begin
+  iSze:=pred(nPos('_',ExtractFileName(sArc),4)); //NUR LANDSAT!
+  if iSze<0 then Tools.ErrorOut(3,cArc+sArc);
+  Result:=eeHme+copy(ExtractFileName(sArc),1,iSze); //neues Verzeichnis
+  CreateDir(Result); //Ziel-Verzeichnis
+  if not DirectoryExists(Result) then Tools.ErrorOut(2,cDir+Result);
+  SetCurrentDir(Result); //aktuell machen
   if (slNme<>nil) and (slNme.Count>0) then
   try
     slPrm:=tStringList.Create;
@@ -1134,13 +801,13 @@ begin
   finally
     slPrm.Free;
   end;
+  Tools.HintOut(true,'TarExtract: '+ExtractFileName(sArc));
 end;
 
 { pEF liest Kanäle aus dem Artćhiv "sArc", die zu den Strings in "sBnd" passen.
   pEF liest das Inhaltsverzeichnis des Archivs "sArc", reduziert es auf Namen
   die in "sBnd" vorkommen und extrahiert die gefilterten Namen. Der Befehl
-  "tar" extrahiert in das Stamm-Verzeichnis wenn keine Pfade gesetzt sind,
-  unter gdb in das Verzeichnis des aufrufenden Programms. "sBnd" kann eine
+  "tar" extrahiert in das System-Arbeitsverzeichnis (pwd). "sBnd" kann eine
   kommagetrennte Liste sein. Jeder Eintrag wird getrennt gefiltert. }
 
 function tArchive.ExtractFilter(
@@ -1157,256 +824,30 @@ begin
   Result:=nil;
   try
     slMsk:=tStringList.Create;
-    slMsk.Text:=Tools.CommaToLine(sBnd); //Liste aus CSV
+    slMsk.Text:=Tools.CommaToLines(sBnd); //Liste aus CSV
     Result:=TarContent(sArc,slMsk); //Dateinamen im Archiv lesen und filtern
     if (Result<>nil) and (Result.Count>0) then
     begin
       TarExtract(sArc,Result); //Namen in "Result" extrahieren
       sDir:=Tools.OsCommand('pwd','')+DirectorySeparator;
-      //writeln('pwd = '+sDir);
-      {if FileExists(ExtractFilePath(eeExc)+Result[0])=False
-        then sDir:=Tools.SetDirectory('/home/'+Tools.OsCommand('whoami','')) //Stammverzeichnis
-        else sDir:=ExtractFilePath(eeExc); //Verzeichnis der ausführbaren Datei}
       for I:=pred(Result.Count) downto 0 do
-        if FileExists(sDir+Result[I]) //Extraktion erfolgreich
-          then Result[I]:=sDir+Result[I] //vollständiger Pfadname
-          else Result.Delete(I); //kein Ergebnis
+      begin
+        if FileExists(sDir+Result[I]) then //Extraktion erfolgreich
+          Result[I]:=sDir+Result[I] //vollständiger Pfadname
+        else Result.Delete(I); //kein Ergebnis
+      end;
     end
     else Tools.ErrorOut(0,cArc+sArc) //Nachricht, keine Unerbrechung
   finally
     slMsk.Free;
   end;
-  if (Result<>nil) and (Result.Count>0)
-    then Tools.HintOut(true,'Archive.ExtractF: '+sBnd)
-    else FreeAndNil(Result); //nil zurückgeben
-end;
-
-{ aQD vergleicht das Datum "sDat" mit der Zeitperiode "sPrd". aQD ist wahr,
-  wenn Jahr, Monat und Tag aus "sDat" zu den Grenzen in "sPrd" passen. Alle
-  Datumsangaben müssen als YYYYMMDD formatiert sein. }
-
-function tArchive.QueryDate(
-  sDat:string; //Datum im Vorbild YYYYMMDD
-  sPrd:string): //Periode als YYYYMMDD-YYYYMMDD
-  boolean; //Übereinstimmung
-const
-  cDat = 'aQD: Dates must be passed as "YYYYMMDD": ';
-var
-  iDat,iHig,iLow:integer; //Datum als Zahl
-begin
-  Result:=False;
-  if (TryStrToInt(sDat,iDat)=False)
-  or (TryStrToInt(LeftStr(sPrd,8),iLow)=False)
-  or (TryStrToInt(RightStr(sPrd,8),iHig)=False)
-  then Tools.ErrorOut(2,cDat+sDat);
-  Result:=(iDat>=iLow) and (iDat<=iHig);
-end;
-
-{ rOl gibt für jeden Bildpixel in einem Stack (Zeitreihe) den Quotient zwischen
-  Abweichung und Mittelwert zurück. Ausreißer und Veränderungen werden mit
-  hohen Werten abgebildet. }
-
-function tRank._NormDiff_(
-  faDns:tnSgl): //Werte-Reihe
-  single; //Abweichung/Helligkeit
-// Varianz = (∑x²-(∑x)²/n)/(n-1)
-var
-  fSum:double=0;
-  fSqr:double=0;
-  fVrz:double=0;
-  I:integer;
-begin
-  for I:=0 to high(faDns) do
-  begin
-    fSqr+=sqr(faDns[I]);
-    fSum+=faDns[I];
-  end;
-  fVrz:=(fSqr-sqr(fSum)/length(faDns))/high(faDns); //Varianz ACHTUNG Rundung!
-  Result:=sqrt(max(fVrz,0))/fSum*length(faDns); //Relativ zur Helligkeit
-end;
-
-{ rCL dämpft die Zeitreihe "faDns" mit einem gewichteten Mittelwert in einem
-  beweglichen Fenster. Das Fenster ist "iRds"*2+1 Punkte lang, am Anfang und
-  Ende der Zeitreihe kürzer. Der Mittelpunkt im Fenster hat das höchste
-  Gewicht, Nachbarn sind mit dem Quadrat der Distanz reduziert. }
-
-procedure tRank._ChainLine_(
-  faDns:tnSgl; //Zeitreihe
-  iRds:integer); //Fang-Radius
-const
-  cTms = sqrt(2);
-var
-  faTmp:tnSgl=nil; //Zwischenlager
-  fDst:single; //Distanz Wert und Zeit
-  fVal:single; //Summe gewichtete Werte
-  fWgt:single; //Summe gewichtete Distanzen
-  I,R:integer;
-begin
-  SetLength(faTmp,length(faDns));
-  move(faDns[0],faTmp[0],length(faDns)*SizeOf(single)); //Kopie als Backup
-  for I:=0 to high(faDns) do
-  begin
-    fVal:=faDns[I]; //Vorgabe
-    fWgt:=1; //Vorgabe
-    for R:=I-iRds to I+iRds do
-    begin
-      if (R<0) or (R=I) or (R>high(faDns)) then continue;
-      fDst:=power(cTms,abs(I-R)); //Distanz-Faktor
-      fWgt+=1/fDst; //Summe Gewichte
-      fVal+=faTmp[R]/fDst //Summe gewichtete Werte
-    end;
-    if fWgt>0 then
-      faDns[I]:=fVal/fWgt;
-  end;
-end;
-
-{ rMn bildet den Median aus allen übergebenen Kanälen. Dazu kopiert rMn alle
-  Werte eines Pixels nach "fxDev", sortiert "fxDev" mit "QuickSort" und
-  übernimmt den Wert in der Mitte der gültigen Einträge in "fxDev". rMn kopiert
-  NoData Werte in den Bilddaten nicht nach "faDev" sondern reduziert mit "iDim"
-  die gültigen Stellen in "faDev". }
-
-procedure tRank._Median_(
-  faDns:tnSgl; //Zeitreihe, wird verändert!
-  iRds:integer);
-var
-  faPrt:tnSgl=nil; //Zeitreihe-Fenster
-  faTmp:tnSgl=nil; //Puffer für "faDns"
-  iCnt:integer; //gültige Zeitpunkte
-  I,R: integer;
-begin
-  SetLength(faTmp,length(faDns));
-  move(faDns[0],faTmp[0],length(faDns)*SizeOf(single)); //Kopie als Backup
-  SetLength(faPrt,succ(iRds*2));
-  for I:=0 to high(faDns) do
-  begin
-    iCnt:=0;
-    for R:=I-iRds to I+iRds do
-    begin
-      if (R<0) or (R>high(faDns)) then continue;
-      faPrt[iCnt]:=faTmp[R];
-      inc(iCnt);
-    end;
-    Reduce.QuickSort(faPrt,iCnt); //ordnen
-    faDns[I]:=faPrt[trunc(iCnt/2)] //Median
-  end;
-end;
-
-// Zeitverlauf stark dämpfen
-// NoData von Kanal 1 muss für alle Kanäle gelten
-// Outlier erzeugt Suchbild = Abweichung / Helligkeit
-// Median entfernt Ausreißer
-
-procedure tRank._xEqualize(
-  iRds:integer; //Fang-Radius
-  sImg:string); //Vorbild
-const
-  //cLmt = 0.3;
-  cLmt = 5;
-  cStk = 'rSg: The time course must contain at least tree layers: ';
-var
-  fNan:single=NaN; //NoData
-  faDns:tnSgl=nil; //Werte für einen Pixel
-  fxOtl:tn2Sgl=nil; //Kontroll-Bild
-  fxStk:tn3Sgl=nil; //Stack aus Zeitpunkten
-  rHdr:trHdr; //Metadata
-  S,X,Y:integer;
-begin
-  Header.Read(rHdr,sImg);
-  if rHdr.Stk<3 then Tools.ErrorOut(2,cStk+sImg);
-  faDns:=Tools.InitSingle(rHdr.Stk,0); //ein Pixel, alle Zeitpunkte
-  fxStk:=Image.Read(rHdr,sImg); //Stack aus Zeitpunkten
-  fxOtl:=Tools.Init2Single(rHdr.Lin,rHdr.Scn,dWord(fNan));
-
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-    begin
-      if isNan(fxStk[0,Y,X]) then continue;
-      for S:=0 to pred(rHdr.Stk) do
-        faDns[S]:=fxStk[S,Y,X]; //Zeit-Array aus einem Pixel
-      //fxOtl[Y,X]:=NormDiff(faDns); //normalisierte Abweichung
-      //Median(faDns,iRds); //outlier entfernen
-      //ChainLine(faDns,iRds); //LowPass
-      //fxOtl[Y,X]:=_Outlier(faDns,iRds); //"Outlier" UND "Stack" füllen
-      //_MeanLine(faDns,iRds); //Mittelwerte
-      fxOtl[Y,X]:=_Outlier(faDns,cLmt);
-// Schwellen scheinen nie zu funktionieren
-      for S:=0 to pred(rHdr.Stk) do
-        fxStk[S,Y,X]:=faDns[S]; //Ausgleich als Bild
-    end;
-  Image.WriteMulti(fxStk,eeHme+'equalize');
-  Header.WriteMulti(rHdr,rHdr.aBnd,eeHme+'equalize');
-  Image.WriteBand(fxOtl,0,eeHme+'outlier');
-  Header.WriteScalar(rHdr,eeHme+'outlier');
-end;
-
-// arithmetisch mitteln
-
-procedure tRank._MeanLine_(
-  faDns:tnSgl; //Zeitreihe
-  iRds:integer); //Fang-Radius
-const
-  cTms = sqrt(2);
-var
-  faTmp:tnSgl=nil; //Zwischenlager
-  fSum:single; //Summe Werte
-  iCnt:integer; //Anzahl Werte
-  I,R:integer;
-begin
-  SetLength(faTmp,length(faDns));
-  move(faDns[0],faTmp[0],length(faDns)*SizeOf(single)); //Kopie als Backup
-  for I:=0 to high(faDns) do
-  begin
-    fSum:=0; iCnt:=0; //Vorgabe
-    for R:=I-iRds to I+iRds do
-    begin
-      if (R<0) or (R>high(faDns)) then continue;
-      fSum+=faTmp[R]; //Summe gewichtete Werte
-      inc(iCnt) //gültige Punkte
-    end;
-    if iCnt>0 then
-      faDns[I]:=fSum/iCnt
-    else faDns[I]:=0;
-  end;
-end;
-
-// isolierte Outlier entfernen
-
-function tRank._Outlier(
-  faDns:tnSgl; //Zeitreihe
-  fLmt:single): //Schwelle für normaisierte Abweichung
-  single; //Abweichung
-// Varianz = (∑x²-(∑x)²/n)/(n-1)
-var
-  faTmp:tnSgl=nil; //Zwischenlager
-  fSqr:double=0; //Quadratsumme Werte
-  fSum:double=0; //Summe Werte
-  I,R:integer;
-begin
-  SetLength(faTmp,length(faDns));
-  move(faDns[0],faTmp[0],length(faDns)*SizeOf(single)); //Kopie als Backup
-
-
-  for I:=0 to high(faDns) do
-  begin
-    fSqr+=sqr(faTmp[I]);
-    fSum+=faTmp[I];
-  end;
-  Result:=sqrt(max((fSqr-sqr(fSum)/length(faDns))/high(faDns),0)); //Abweichung(Rundungsfehler!)
-
-
-  if abs(faTmp[0]-Result)>Result*fLmt then
-    faDns[I]:=(faTmp[1]); //ersetzen
-  for I:=1 to length(faDns)-2 do
-    if abs(faTmp[I]-Result)>Result*fLmt then
-      faDns[I]:=(faTmp[pred(I)]+faTmp[succ(I)])/2; //interpolieren
-  if abs(faTmp[high(faDns)]-Result)>Result*fLmt then
-    faDns[high(faDns)]:=(faTmp[length(faDns)-2]); //ersetzen
+  if (Result<>nil) and (Result.Count=0) then
+    FreeAndNil(Result); //nil zurückgeben
 end;
 
 { aGE liest den Nadir-Sonnenwinkel aus den RapidEye Metadaten }
 
-function tArchive.GetElevation(sXml:string):single; //RapidEye-Metadaten
+function tArchive._GetNadir_(sXml:string):single; //RapidEye-Metadaten
 const
   cIea = '<opt:illuminationElevationAngle'; //Kennung
   cPos = 'aGE: Illumination angle not found in ';
@@ -1414,7 +855,6 @@ var
   fVal:single; //Winkel als Zahl > Divisor
   iHig,iLow:integer; //Ende, Anfang der Ziffer
   sRem:string; //XML-Text
-  qS:string;
 begin
   Result:=1; //Vorgabe
   sRem:=Tools.LineRead(sXml); //Metadaten als String
@@ -1424,90 +864,14 @@ begin
   begin
     iLow:=succ(pos('>',sRem,iLow)); //Ende Kennung
     iHig:=pos('</',sRem,iLow); //Ende Ziffer
-    qS:=copy(sRem,iLow,iHig-iLow); //Ziffer
     fVal:=StrToFloat(copy(sRem,iLow,iHig-iLow)); //Zahl
     Result:=cos((90-fVal)/180*Pi); //Nadir-Winkel
   end
-  else Tools.ErrorOut(2,cPos+sXml);
-end;
-
-{ aIR übernimmt unkomprimierte RapidEye-Kacheln wie sie geliefert werden und
-  speichert sie als kalibrierte Bilder im IDL-Format in das Arbeitsverzeichnis.
-  Der Name besteht aus Sensor, Kachel und Datum. In "sArc" der Name aus der
-  Lieferung übergeben werden. aIR übernimmt variable Faktoren für die
-  Kalibrierung direkt aus den Metadaten und kombiniert sie mit konstanten
-  Faktoren. }
-
-function tArchive._ImportRapidEye_(
-  sArc:string): //Original-Name (multispektrale Bilddaten)
-  string; //Dateiname nach Import
-const
-  cNod:single=0; //NoData-Äquivalent
-  caEai: array[0..4] of single = (1.572526106e-5, 1.685855999e-5,
-    2.013325207e-5, 2.252037745e-5,2.794016946e-5); //aus RapidEye-Product-Specifications.pdf
-var
-  faFct:tnSgl=nil; //Faktoren für Kalibrierung
-  fSia:single; //Solar Incidence Angle
-  I:integer;
-begin
-  //sArc=*.zip? *.tar?
-  Gdal.Import(byte(true),0,1,crFrm,sArc,''); //als ~/import speichern
-  fSia:=GetElevation(ChangeFileExt(sArc,'_metadata.xml')); //Nadir-Sonnen-Winkel ergänzen
-  SetLength(faFct,length(caEai)); //Array erzeugen
-  if fSia<>0 then
-    for I:=0 to high(faFct) do
-      faFct[I]:=caEai[I]/fSia; //Winkel
-  Filter.Calibrate(faFct,0,cNod,eeHme+cfImp); //Kanäle einzeln kalibrieren
-  Result:=Tools.ShortName(3,5,2,sArc); //
-  for I:=1 to 2 do
-    delete(Result,rPos('-',Result),1); //Bindestriche
-  Tools.EnviRename(eeHme+cfImp,Result); //Zwischenlager, getrennte Kanäle
-end;
-
-{ aIR übernimmt unkomprimierte RapidEye-Kacheln wie sie geliefert werden und
-  speichert sie als kalibrierte Bilder im IDL-Format in das Arbeitsverzeichnis.
-  Der Name besteht aus Sensor, Kachel und Datum. In "sArc" der Name aus der
-  Lieferung übergeben werden. aIR übernimmt variable Faktoren für die
-  Kalibrierung direkt aus den Metadaten und kombiniert sie mit konstanten
-  Faktoren. }
-
-function tArchive._ImportAster_(
-  sArc:string): //Original-Namen
-  string; //Dateiname nach Import
-const
-  cNod:single=-$FFFF; //NoData-Äquivalent
-var
-  faFct:tnSgl=nil; //Faktor für Kalibrierung
-begin
-  //sArc=*.zip? *.tar?
-  Gdal.Import(byte(true),0,1,crFrm,sArc,''); //als ~/import speichern + beschneiden
-  faFct:=Tools.InitSingle(1,dWord(single(1)));
-  Filter.Calibrate(faFct,0,cNod,eeHme+cfImp); //Kanäle einzeln kalibrieren
-  Result:=eeHme+'A3_'+ExtractWord(2,sArc,['_'])+'_20000101'; //Sensor_Kachel_Dummy-Datum
-  Tools.EnviRename(eeHme+cfImp,Result); //Zwischenlager, getrennte Kanäle
-end;
-
-{ aQP prüft, ob die Bounding-Box der Bildkachel in "rImg" vollständig außerhalb
-  des Auswahl-Rechecks "rRoi" liegt. }
-
-function tArchive.QueryPosition(
-  rImg:trFrm; //nutzbare Fläche
-  rRoi:trFrm): //Auswahl-Rechteck
-  boolean; //Überlappung existiert
-const
-  cEpg = 'aQP: Coordinate system mismatch: ';
-begin
-  if rImg.Epg<>rRoi.Epg then
-    Tools.ErrorOut(3,IntToStr(rImg.Epg)+' ‹› '+IntToStr(rRoi.Epg));
-  Result:=not(
-    (rImg.Rgt<rRoi.Lft) or
-    (rImg.Btm>rRoi.Top) or
-    (rImg.Lft>rRoi.Rgt) or
-    (rImg.Top<rRoi.Btm));
+  else Tools.ErrorOut(3,cPos+sXml);
 end;
 
 { gIt konvertiert das Bild "sImg" in das IDL-Format und speichert das Ergebnis
-  als "import". Mit "sTrg" kann ein anderer Name gewählt werden. Mit "iSgl=0"
+  als "import". Mit "sTrg" kann ein anderer Name gewählt werden. MiEnviRenamt "iSgl=0"
   übernimmt gIt das Format des Originals, in allen anderen Fällen speichert gIt
   das Bilder als 32-Bit Float. gIt aktualisiert die Bildstatistik. Mit "iHig >=
   iLow > Null" werden nur die Kanäle zwischen "iLow" und "iHig" übernommen. Mit
@@ -1515,7 +879,7 @@ end;
   Das CRS des Rahmens kann vom Bild abweichen. Der Rahmen darf größer sein als
   das Bild. }
 
-procedure tGdal.Import(
+procedure tGdal.Translate(
   iSgl:integer; //Ergebnis im Single-Format [0,1]
   iHig,iLow:integer; //letzter, erster Kanal beginnend mit Eins; iHig<iLow für alle
   rFrm:trFrm; //Auswahl-Rahmen, Koordinaten-System muss eingetragen sein
@@ -1528,10 +892,11 @@ const
 var
   slCmd: tStringList=nil; //Befehls-Parameter für gdal
   B: integer;
+  qS:string;
 begin
-  //if not FileExists(eeHme) then Tools.ErrorOut(2,cHme);
-  if not DirectoryExists(eeHme) then Tools.ErrorOut(2,cHme);
-  if not FileExists(sImg) then Tools.ErrorOut(2,cSrc+sImg);
+  //if not FileExists(eeHme) then Tools.ErrorOut(3,cHme);
+  if not DirectoryExists(eeHme) then Tools.ErrorOut(3,cHme);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cSrc+sImg);
 
   if sTrg='' then sTrg:=eeHme+cfImp; //Vorgabe
   try
@@ -1550,13 +915,16 @@ begin
         slCmd.Add('-b');
         slCmd.Add(IntToStr(B))
       end;
-    if rFrm.Lft<rFrm.Rgt then //nicht Vorgabe
+    if rFrm.Lft<rFrm.Rgt then //nicht Vorgabe "crFrm"
     begin
       slCmd.Add('-projwin');
       slCmd.Add(FloatToStr(rFrm.Lft));
       slCmd.Add(FloatToStr(rFrm.Top));
       slCmd.Add(FloatToStr(rFrm.Rgt));
       slCmd.Add(FloatToStr(rFrm.Btm));
+    end;
+    if rFrm.Epg>0 then
+    begin
       slCmd.Add('-projwin_srs');
       //slCmd.Add('EPSG:4326'); //CRS = geographisch
       slCmd.Add('EPSG:'+IntToStr(rFrm.Epg)); //CRS übergeben
@@ -1567,66 +935,13 @@ begin
     slCmd.Add(sTrg); //Ergebnis Dateiname
     //slCmd.SaveToFile(eeHme+'gdal_translate.params'); //KONTROLLE
     Tools.OsExecute(eeGdl+'gdal_translate',slCmd);
+    qS:=slCmd.Text;
     Tools.ErrorLog('gIt:'); //Fehler speichern
   finally
     slCmd.Free;
   end;
-  if not FileExists(sTrg) then Tools.ErrorOut(2,cGdl+sImg);
-  Tools.HintOut(true,'GDAL.Import: '+ExtractFileName(sImg));
-end;
-
-{ gWp transformiert das Bild "sImg" in die Projektion "iCrs" und die Pixelgröße
-  "iPix" und speichert das Ergebnis im IDL-Format als "warp". Mit "target" kann
-  ein anderer Name gewählt werden. Die Pixel sind quadratisch. Ihre Position
-  folgt den Ziel-Koordinaten (TAP). Die Pixel-Werte sind bicubisch interpoliert.
-  Leere Bereiche sind auf NoData gesetzt. }
-
-procedure tGdal.Warp(
-  iCrs:integer; //EPSG-Code für Ergebnis
-  iPix:integer; //Pixelgröße in Metern
-  sImg:string; //Vorbild
-  sTrg:string); //Ergebnis-Name ODER leer
-const
-  cGdl = 'gWp: GDAL image warp not successful: ';
-  cSrc = 'gWp: Image source file not found: ';
-var
-  slCmd: tStringList=nil; //Parameter-Liste für "prSys"
-begin
-  if sTrg='' then sTrg:=eeHme+cfWrp;
-  if not FileExists(sImg) then Tools.ErrorOut(2,cSrc+sImg);
-  try
-    slCmd:=TStringList.Create;
-    if iCrs>0 then
-    begin
-      slCmd.Add('-t_srs'); //target-CRS
-      slCmd.Add('EPSG:'+IntToStr(iCrs)); //gewähltes CRS
-    end;
-    if iPix>0 then
-    begin
-      slCmd.Add('-tr'); //target-Pixelgröße
-      slCmd.Add(IntToStr(iPix)); //gewählte Pixelgröße horizontal
-      slCmd.Add(IntToStr(iPix)); //gewählte Pixelgröße vertikal
-    end;
-    slCmd.Add('-ot'); //Datenformat
-    slCmd.Add('Float32'); //Single = Standard
-    slCmd.Add('-r'); //Resampling
-    slCmd.Add('cubic'); //Quadratisch = Standard
-    slCmd.Add('-dstnodata');
-    slCmd.Add(FloatToStr(NaN));
-    slCmd.Add('-tap'); //Target Alligned Pixels
-    slCmd.Add('-of'); //Bildformat
-    slCmd.Add('ENVI'); //ENVI
-    slCmd.Add(sImg); //Vorbild
-    slCmd.Add('-overwrite'); //Ergebnis ersetzen
-    slCmd.Add(sTrg); //Ergebnis
-    //slCmd.SaveToFile(eeHme+'gdalwarp.params'); //KONTROLLE
-    Tools.OsExecute(eeGdl+'gdalwarp',slCmd);
-    Tools.ErrorLog('gWp:'); //Bei Exceptions anhalten
-  finally
-    slCmd.Free;
-    if not FileExists(sTrg) then Tools.ErrorOut(2,cGdl+sTrg);
-  end;
-  Tools.HintOut(true,'GDAL.Warp: '+ExtractFileName(sImg));
+  if not FileExists(sTrg) then Tools.ErrorOut(3,cGdl+sImg);
+  Tools.HintOut(true,'Translate: '+ExtractFileName(sImg));
 end;
 
 { gES transformiert eine Vektor-Datei und ihre Attribute in das Shape-Format.
@@ -1645,7 +960,7 @@ const
 var
   slCmd:tStringList=nil; //Parameter als Liste
 begin
-  if not FileExists(sSrc) then Tools.ErrorOut(2,cSrc+sSrc);
+  if not FileExists(sSrc) then Tools.ErrorOut(3,cSrc+sSrc);
   try
     slCmd:=TStringList.Create;
     slCmd.Add('-f'); //Output-File-Format
@@ -1662,349 +977,861 @@ begin
     end;
     slCmd.Add('-nlt'); //Geometrie-Typ
     slCmd.Add('MULTIPOLYGON');
-{   TODO: slCmd.Add('-preserve_fid') bewahrt Feldnamen }
+    { todo [Gdal.ExportShape] slCmd.Add('-preserve_fid') bewahrt Feldnamen }
     slCmd.Add(sTrg); //Ziel: formatierte Geometrie
     slCmd.Add(sSrc); //Vorlage: erweiterte CSV-Datei
     Tools.OsExecute(eeGdl+'ogr2ogr',slCmd);
     Tools.ErrorLog('gES:'); //Exceptions speichern
   finally
     slCmd.Free;
-    if not FileExists(sTrg) then Tools.ErrorOut(2,cGdl+sTrg);
+    if not FileExists(sTrg) then Tools.ErrorOut(3,cGdl+sTrg);
   end;
-  Tools.HintOut(true,'GDAL.Export: '+ExtractFileName(sTrg));
+  Tools.HintOut(true,'ExportShape: '+ExtractFileName(sTrg));
 end;
 
-{ aCg erzeugt eine Landsat-Archiv-Liste mit einem Polygon für die nutzbare
-  Bildfläche und dem Namen des Archivs. Die Polygone sind im WKT-Format
-  gespeichert, die Koordinaten sind geographisch. Der Katalog lässt sich im
-  GIS visualisieren. }
+//Korrelations-Tabelle aus Klassen-Layern
 
-function tArchive.xCatalog(
-  sMsk:string): //Maske für Archiv-Dateinamen
-  tStringList; //Bildrahmen
-const
-  cBox = 'aCg: Image coordinates not found or not defined: ';
+function tRank._Correlation(
+  iMap,iRfz:integer; //Anzahl Klassen/Referenzen (ohne Rückweisung)
+  ixMap,ixRfz:tn2Byt): //Klassen/Referenz-Layer
+  tn2Sgl; //Anteile der Klassen in den Referenzen
 var
-  bErr:boolean=False; //Fehler bei Zahlenkonvertierung
-  slArc:tStringList=nil; //Archiv-Namen nach Filterung
-  slBnd:tStringList=nil; //Dateinamen im Archiv
-  slMtl:tStringList=nil; //Text in MTL-Datei
-  sRes:string; //Zeile im Katalog
-  I,K:integer;
+  M,R,X,Y:integer;
 begin
-  Result:=tStringList.Create;
-  try
-    slMtl:=tStringList.Create; //Metadaten als text
-    slArc:=Tools.FileFilter(ChangeFileExt(sMsk,'.tar')); //Archiv-Namen
-    Result.Add('WKT,id,filename');
-    for I:=0 to pred(slArc.Count) do
+  Result:=Tools.Init2Single(succ(iMap),succ(iRfz),0);
+  for Y:=0 to high(ixMap) do
+    for X:=0 to high(ixMap[0]) do
+      Result[ixMap[Y,X],ixRfz[Y,X]]+=1.0;
+  for M:=1 to high(Result) do
+    for R:=1 to high(Result[0]) do
+      Result[M,0]+=Result[M,R]; //Summe für alle Klassen
+  for M:=1 to high(Result) do
+    for R:=1 to high(Result[0]) do
+      Result[M,R]/=Result[M,0]; //Anzeilepro Referenz
+end;
+
+// Korrelation einer Klassifikation mit einer Referenz
+
+procedure tRank._xCorrelation();
+var
+  fxCrl:tn2Sgl=nil; //Verteilung Klassen : Referenz
+  ixMap:tn2Byt=nil; //Klassifikation
+  ixRfz:tn2Byt=nil; //Klassen-Referenz
+  rMap,rRfz:trHdr; //Metadaten Klassifikation, Referenz
+begin
+  Header.Read(rRfz,eeHme+cfRfz); //Metadaten Referenz
+  ixRfz:=Image.ReadThema(rRfz,eeHme+cfRfz); //Referenzen als Raster-Maske
+  Header.Read(rMap,eeHme+cfMap); //Metadaten Klassifikation
+// Bilder gleich groß?
+  ixMap:=Image.ReadThema(rMap,eeHme+cfMap); //Klassen als Raster-Maske
+  fxCrl:=_Correlation(rMap.Cnt,rRfz.Cnt,ixMap,ixRfz);
+  Tools.SingleToText(fxCrl,rMap.Fld,rRfz.Fld,eeHme+cfAcy);
+end;
+
+{ rDn bestimmt Median, 5% und 95% Percentil der Werte im Bild "values" und gibt
+  das Ergebnis als Tabelle zurück. Die Tabelle enthält in der Zeile Null das
+  Ergebnis für das ganze Bild, in den Zeilen darunter die Ergebnisse für
+  einzelne Klassen aus "ixRfz". rDn ignoriert NoData und die Klasse Null }
+
+function tRank.Distribution(
+  iAtr:integer; //Attribut-ID (ab Null)
+  iMap:integer; //Anzahl Klassen in Referenz
+  iSmp:integer; //Anzahl Stichproben
+  ixRfz:tn2Byt): //Klassen-Maske = Referenz
+  tn2Sgl; //Mittelwert, Varianz der Bilddaten in Referenzen
+var
+  faSmp:tnSgl=nil; //Stichproben-Liste
+  faTmp:tnSgl=nil; //Stichproben mit gleicher Klasse
+  fStp:double=0; //Schrittweite für Stichproben
+  fSum:double=0; //cumulierte Schritte
+  fxVal:tn2Sgl=nil; //Kanal mit Attribut-Werten als Bild
+  iaThm:tnByt=nil; //Klasse pro Stichprobe
+  iCnt:integer=0; //Anzahl gültige Stichproben
+  iDim:integer=0; //Anzahl Stichproben mit aktueller Klasse
+  iHrz,iVrt:integer; //Pixel-Koordinaten
+  iScn:integer=0; //Bildbreite in Pixeln
+  rHdr:trHdr; //Metadaten Attribute als Bild "values"
+  I,R:integer;
+begin
+  //0<=iThm<rHdr.Cnt?
+  //eeHme+cfVal muss existieren
+
+  Result:=Tools.Init2Single(3,succ(iMap),0); //Ergebnis
+  faSmp:=Tools.InitSingle(iSmp,0); //Stichproben-Liste
+  fStp                             :=length(ixRfz)*length(ixRfz[0])/succ(iSmp); //Schrittweite in Pixeln
+  iaThm:=Tools.InitByte(iSmp); //Klassen-ID der Stichproben
+  iScn:=length(ixRfz[0]); //Bildbreite in Pixeln
+  Header.Read(rHdr,eeHme+cfVal); //Metadaten Attribut-Bilder
+  fxVal:=Image.ReadBand(iAtr,rHdr,eeHme+cfVal); //aktuelles Attribut als Bild
+
+  for I:=0 to pred(iSmp) do
+  begin //Statistik für alle Werte ← nur sinnvoll nach Normalisierung → Trennen ?
+    fSum+=fStp;
+    iVrt:=trunc(fSum) div iScn; //Y-Koordinate
+    iHrz:=trunc(fSum) mod iScn; //X-Koordinate
+    if not isNan(fxVal[iVrt,iHrz]) then
     begin
-      slBnd:=ExtractFilter(slArc[I],'_MTL.txt'); //MTL-Text extrahieren
-      if FileExists(slBnd[0]) then
-      begin
-        slMtl.LoadFromFile(slBnd[0]); //MTL-Text lesen
-        bErr:=False;
-        for K:=0 to pred(slMtl.Count) do
-          if slMtl[K]='  GROUP = PROJECTION_ATTRIBUTES' then
-          begin
-            sRes:='"MULTIPOLYGON ((('+
-              RightStr(slMtl[K+13],8)+#32+RightStr(slMtl[K+12],8)+','+
-              RightStr(slMtl[K+15],8)+#32+RightStr(slMtl[K+14],8)+','+
-              RightStr(slMtl[K+19],8)+#32+RightStr(slMtl[K+18],8)+','+
-              RightStr(slMtl[K+17],8)+#32+RightStr(slMtl[K+16],8)+','+
-              RightStr(slMtl[K+13],8)+#32+RightStr(slMtl[K+12],8)+')))"';
-            break; //fertig
-          end;
-        DeleteFile(slBnd[0]); //aufräumen
-        if bErr or (K=slMtl.Count) then
-          Tools.ErrorOut(2,cBox+slArc[I]); //Zahlen nicht gefunden oder nicht lesbar
-        Result.Add(sRes+','+IntToStr(succ(I))+','+slArc[I]);
+      faSmp[I]:=fxVal[iVrt,iHrz]; //Stichprobe Nr."I"
+      iaThm[I]:=ixRfz[iVrt,iHrz]; //Klassen-ID dazu
+      inc(iCnt)
+    end;
+  end;
+  Result[0,0]:=Percentil(faSmp,0.05,pred(iCnt)); //5% Percentil = Minimum
+  Result[1,0]:=Percentil(faSmp,0.50,pred(iCnt)); //50% Percentil = Median
+  Result[2,0]:=Percentil(faSmp,0.95,pred(iCnt)); //95% Percentil = Maximum
+
+  for R:=1 to iMap do
+  begin //Statistik für einzelne Klassen
+    SetLength(faTmp,iSmp); //maximale Größe
+    iDim:=0;
+    for I:=0 to pred(iCnt) do
+      if iaThm[I]=R then
+      begin //Pixel pro Klasse sammeln
+        faTmp[iDim]:=faSmp[I];
+        inc(iDim)
       end;
-      FreeAndNil(slBnd); //Speicher freigeben in der Schleife
-      write(#13+IntToStr(slArc.Count-I)+#32) //Ablauf
+    if iDim>0 then
+    begin
+      SetLength(faTmp,iDim); //maximale Größe
+      Result[0,R]:=Percentil(faTmp,0.05,pred(iDim)); //5% Percentil = Minimum
+      Result[1,R]:=Percentil(faTmp,0.50,pred(iDim)); //50% Percentil = Median
+      Result[2,R]:=Percentil(faTmp,0.95,pred(iDim)); //95% Percentil = Maximum
+    end
+    else
+    begin
+      Result[0,R]:=0;
+      Result[1,R]:=0;
+      Result[2,R]:=0;
+    end;
+  end;
+end;
+
+{ rVR speichert eine Geometrie "sVct" mit einem passenden Attribut "sFld" als
+  Klassen-Layer "mapping" im Rasterformat. rVR interpretiert die Einträge im
+  Attribut "sFld" als Text. Bis zu 250 verschiedene Einträge sind zulässig. }
+{ rVR importiert die Geometrie als als "vector.csv", ergänzt eine fortlaufende
+  Klassen-ID in "focus.csv" und erzeugt daraus einen Klassen-Layer "mapping"
+  mit dem Klassen-Index als Wert. rVR überträgt die Attribute als Klassen-Namen
+  in "mapping" }
+
+procedure tRank.xVectorReference(
+  sFld:string; //Feldname für Klassen in Geometrie
+  sVct:string); //Dateiname Klassen-Geometrie
+var
+  rHdr:trHdr; //Metadaten Raster-Klassen
+  slThm:tStringList=nil;
+begin
+  Gdal.ImportVect(0,sVct); //Polygone als "vector.csv" importieren
+  try
+    slThm:=Table.AddIndex(sFld); //Fortlaufende Klassen-ID in "vector.csv" eintragen
+    slThm[0]:='all'; //Klasse Null als ID für ganzes Bild verwenden
+    Table.VectorMask(cfMsk,eeHme+cfFcs); //Raster-Maske aus Klassen-IDs
+    Header.Read(rHdr,eeHme+cfMap); //Metadaten Klassen-Maske ← ohne Klassen-Namen
+    Header.WriteThema(pred(slThm.Count),rHdr,slThm.CommaText,eeHme+cfMap); //Klassen-Namen ergänzen
+  finally
+    slThm.Free
+  end;
+end;
+
+{ rDn bestimmt 5%-50%-95% Percentile für alle Zonen-Attribute in "sBnd" und
+  alle Klassen "fxMap" und speichert das Ergebnis getrennt nach Attributen als
+  Text-Tabellen (Tab-getrennt). Klassen und Zonen-Attribute müssen als Raster-
+  Layer (values, mapping) verfügbar sein um beliebige Geometrieen zu
+  verschneiden. Die Klassen müssen fortlaufend nummeriert sein }
+{ rDn vergleicht sukzessive alle in sBnd gewählten Attribute mit den Klassen
+  aus "mapping". Die Tabellen enthalten getrennte Spalten für 5%, 50% und 95%
+  Percentile und zu Beginn eine Zeile für alle Klassen. Die Tabellen sind nach
+  den Attributen benannt }
+
+procedure tRank.xDistribution( // <=> xCorrelation
+  iSmp:integer); //Anzahl Stichproben
+const
+  cSmp = 'rDn: Sample input must be a positive integer: ';
+  cTop = ' ,low (5%),median (50%),high (95%)';
+var
+  fxRes:tn2Sgl=nil;
+  ixRfz:tn2Byt=nil; //Klassen-Layer aus Referenzen
+  rMap:trHdr; //Metadaten der Referenz (Klassen)
+  slAtr:tStringList=nil; //Attribut-Namen = Feld-Namen im Index
+  F:integer;
+begin
+  if iSmp<1 then Tools.ErrorOut(3,cSmp+IntToStr(iSmp));
+  Header.Read(rMap,eeHme+cfMap); //Referenzen als Raster-Maske
+  ixRfz:=Image.ReadThema(rMap,eeHme+cfMap); //Klassen-Maske, fortlaufende Klassen-ID
+  iSmp:=min(pred(rMap.Lin*rMap.Scn),iSmp); //höchstens jeder Pixel
+  slAtr:=tStringList.Create;
+  try
+    slAtr.CommaText:=Header.ReadLine(False,'field names',eeHme+cfIdx); //Attribut-Namen
+    for F:=0 to pred(slAtr.Count) do //Ausgewählte (?) Attribute
+    begin
+      fxRes:=Distribution(F,rMap.Cnt,iSmp,ixRfz);
+      Tools.SingleToText(fxRes,cTop,rMap.Fld,eeHme+IntToStr(succ(F))+'_'+slAtr[F]);
+      write(#13+IntToStr(succ(F))+#32); //Ablauf
     end;
   finally
-    slArc.Free;
-    slMtl.Free;
+    slAtr.Free;
   end;
-  Tools.HintOut(true,'Archive.Catalog: '+ChangeFileExt(sMsk,'.tar'));
 end;
 
-{ aQQ extrahiert den QA-Kanal aus dem Landsat-Archiv "sArc" innerhalb des ROIs
-  "sFrm", bestimmt den Anteil ungestörter Pixel innerhalb der Bilddaten und
-  speichert das Ergebnis als binäre Maske "mask", wenn der Anteil klarer Pixel
-  größer ist als die Schwelle "fLmt". aQQ filtert den QA-Kanal mit binären
-  Filtern für sichere opake Wolken, Wolken-Schatten, Cirren und Bild-Fehler. }
+{ rPl bestimmt den Percentil "fLmt" für das Array "faVal" }
+{ rPl bestimmt zunächst den Wertebereich [fMin,fMax] der gesamten Liste und
+  daraus Summe aller Daten und das vorläufige Ergebnis (Mittelwert). Danach
+  summiert rPl alle Werte bis zur aktuellen Ergebnis "result" und prüft, ob das
+  Ziel der Suche "fTrg" erreicht wird. Je nach Ergebnis übernimmt rPl das
+  aktuelle Ergebnis als obere oder untere Schwelle und wiederholt den Prozess
+  bis er stabil ist }
+{ ==> DIE LISTE DARF KEIN NODADA ENTHALTEN }
 
-function tArchive.QueryQuality(
-  rImg,rRoi:trFrm; //Rahmen-Verschnitt, geographisch
-  var rSct:trFrm; //Verschnitt nach Rotation auf Bild-Projektion
-  sArc:string): //BildArchiv-Name
-  single; //Anteil nutzbare Pixel
+function tRank.Percentil(
+  faVal:tnSgl; //Werte-Liste
+  fLmt:single; //Schwelle [0..1]
+  iHig:integer): //Indices bis faVal[iHig] verwenden
+  single; //Schwelle im Attribut
+var
+  fMax:single=1-MaxSingle; //obere Schwelle
+  fMin:single=MaxSingle; //untere Schwelle
+  iCnt:integer=0; //aktuelle Anzahl Elemente
+  iTmp:integer=0; //Zwischenlager
+  iTrg:integer=0; //Soll Anzahl sortierte Elemente
+  I:integer;
+begin
+  Result:=0; //Vorgabe
+  for I:=0 to iHig do
+  begin
+    fMax:=max(faVal[I],fMax);
+    fMin:=min(faVal[I],fMin);
+  end;
+  Result:=(fMax+fMin)/2; //Vorgabe = Mittelwert
+  iTrg:=round(succ(iHig)*fLmt); //Soll-Anzahl
+
+  repeat
+    iTmp:=iCnt;
+    iCnt:=0; //neu beginnen
+    for I:=0 to iHig do
+      if faVal[I]<=Result then //Werte bis zur Schwelle ..
+        inc(iCnt); //.. zählen
+    if iCnt>=iTrg
+      then fMax:=Result //oben einschränken
+      else fMin:=Result; //unten einschränken
+    Result:=(fMin+fMax)/2; //weiter in der Mitte
+  until (iCnt=iTrg) or (iCnt=iTmp)
+end;
+
+{ aGP prüft ob der String "sPrd" als Periode aus zwei Datumsangaben im Format
+  YYYYMMDD interpretiert werden kann und gibt beide Angaben in "iLow/iHig" als
+  Zahlen zurück. Ist "sPrd" leer, passt "iLow/iHig" zu jedem Datum }
+
+procedure tArchive.GetPeriod(var iHig,iLow:integer; sPrd:string);
+const
+  cPrd='aGP: Date input must be formatted as [YYYYMMDD-YYYYMMDD]: ';
+  cVal='aGP: Earlier date must be passed on the left side: ';
+begin
+  if length(sPrd)>0 then
+  begin
+    if (TryStrToInt(LeftStr(sPrd,8),iLow)=False)
+    or (TryStrToInt(RightStr(sPrd,8),iHig)=False) then
+      Tools.ErrorOut(3,cPrd+sPrd); //Format-Fehler
+    if iLow>iHig then Tools.ErrorOut(3,cVal+sPrd) //Format-Fehler
+  end
+  else
+  begin //Vorgabe = alles
+    iLow:=0;
+    iHig:=99999999;
+  end
+end;
+
+{ gWp transformiert das Bild "sImg" in die Projektion "iCrs" und die Pixelgröße
+  "iPix" und speichert das Ergebnis im IDL-Format als "warp". Mit "target" kann
+  ein anderer Name gewählt werden. Die Pixel sind quadratisch. Ihre Position
+  folgt den Ziel-Koordinaten (TAP). Die Pixel-Werte sind bicubisch interpoliert.
+  Leere Bereiche sind auf NoData gesetzt. }
+
+// Ausschnitt aktiviert
+
+procedure tGdal.Warp(
+  iCrs:integer; //Ziel-Koordinatensystem als EPSG-Code ODER Null für unverändert
+  iPix:integer; //Pixelgröße in Metern
+  rFrm:trFrm; //Bounding-Box für Ausschnitt, CRS beliebig wenn angegeben
+  sImg:string; //Vorbild
+  sTrg:string); //Ergebnis-Name ODER leer
+const
+  cGdl = 'gWp: GDAL image warp not successful: ';
+  cSrc = 'gWp: Image source file not found: ';
+var
+  slCmd: tStringList=nil; //Parameter-Liste für "prSys"
+begin
+  if sTrg='' then sTrg:=eeHme+cfWrp;
+  if not FileExists(sImg) then Tools.ErrorOut(3,cSrc+sImg);
+  try
+    slCmd:=TStringList.Create;
+    if iCrs>0 then
+    begin
+      slCmd.Add('-t_srs'); //target-CRS
+      slCmd.Add('EPSG:'+IntToStr(iCrs)); //gewähltes CRS
+    end;
+    if iPix>0 then
+    begin
+      slCmd.Add('-tr'); //target-Pixelgröße
+      slCmd.Add(IntToStr(iPix)); //gewählte Pixelgröße horizontal
+      slCmd.Add(IntToStr(iPix)); //gewählte Pixelgröße vertikal
+      slCmd.Add('-tap'); //Target Alligned Pixels
+    end;
+    if rFrm.Lft<rFrm.Rgt then //nicht "crMax"
+    begin //Bild beschneiden, Koordinaten im Target-CRS
+      slCmd.Add('-te'); //target beschneiden
+      slCmd.Add(FloatToStr(rFrm.Lft));
+      slCmd.Add(FloatToStr(rFrm.Btm));
+      slCmd.Add(FloatToStr(rFrm.Rgt));
+      slCmd.Add(FloatToStr(rFrm.Top));
+      slCmd.Add('-te_srs'); //abweichendes CRS des ROI
+      slCmd.Add('EPSG:'+IntToStr(rFrm.Epg)); //CRS des ROI
+    end;
+    slCmd.Add('-ot'); //Datenformat
+    slCmd.Add('Float32'); //Single = Standard
+    slCmd.Add('-r'); //Resampling
+    slCmd.Add('cubic'); //Quadratisch = Standard
+    slCmd.Add('-dstnodata');
+    slCmd.Add(FloatToStr(NaN));
+    slCmd.Add('-of'); //Bildformat
+    slCmd.Add('ENVI'); //ENVI
+    slCmd.Add('-overwrite'); //Ergebnis ersetzen
+    slCmd.Add(sImg); //Vorbild
+    slCmd.Add(sTrg); //Ergebnis
+    //slCmd.SaveToFile(eeHme+'gdalwarp.params'); //KONTROLLE
+    Tools.OsExecute(eeGdl+'gdalwarp',slCmd);
+    Tools.ErrorLog('gWp:'); //Protokoll
+  finally
+    slCmd.Free;
+    if not FileExists(sTrg) then Tools.ErrorOut(3,cGdl+sTrg);
+  end;
+  Tools.HintOut(true,'GdalWarp: '+ExtractFileName(sImg));
+end;
+
+{ aSN gibt einen Standard-Kurz-Namen aus Kachel, Kanal und Datum für das
+  Arbeitsverzeichnis zurück. Dazu muss "sNme" der Konvention der Provider
+  entsprechen }
+
+function tArchive.ShortName(
+  aIdf:taIdf; //Position der Abschnitte im Provider-Namen
+  sNme:string): //Provider-Name
+  string; //Imalys-Kurz-Name
+begin
+  case aIdf[1] of
+    1: Result:='S2';
+    3: Result:='LS';
+    6: Result:='S2';
+    else Result:='Im'; //Imalys
+  end;
+  sNme:=ChangeFileExt(ExtractFileName(sNme),''); //Nur Name ohne Extension
+  Result+='_'+ExtractWord(aIdf[1],sNme,['_'])+ //Kachel
+    '_'+LeftStr(ExtractWord(aIdf[3],sNme,['_']),8); //Datum (ohne Zeit)
+end;
+
+{ aII importiert alle Bilder in "slImg" in das Arbeitsverzeichnis, projiziert
+  sie auf "iEpg", beschneidet sie auf "rFrm", wählt die Kanäle aus "sArt" und
+  speichert das Ergebnis im Arbeitsverzeichnis mit einem "c_" vor dem alten
+  Dateinamen. Alle Eingaben bis auf "slImg" sind optional }
+{ Mit "iEpg">0 transformiert aII die Bilder in das neue CRS, mit "iPix">0
+  stellt aII die übergebene Pixelgröße ein und mit "sFrm"<>'' projiziert aII
+  alle übergebenen Bilder in den angegebenen Rahmen. Ohne diese Angaben
+  verwendet aII das CRS, die Pixelgröße und den Rahmen des ersten Bilds als
+  Vorgabe. Mit "sArt"<>'' übernimmt aII nur die angegebenen Kanäle. "sTrg"<>''
+  wählt den Ergebnis-Namen, die Vorgabe ist "compile". Die Kanal-Namen werden
+  fortlaufend nummeriert }
+{ Durch den "warp" Prozess zwingt aIC alle Bilder in den vorgegebenen Rahmen,
+  Überstände werden beschnitten, leere Bereiche auf NoData gesetzt. Der Stack
+  entspricht aufeinander liegenden multispektralen Bildern }
+
+procedure tArchive.xImageImport(
+  iEpg:integer; //Koordinatensystem als EPSG-Code
+  iPix:integer; //Pixel-Größe Ergebnis, Null für keine Veränderung
+  sArt:string; //Formel für Kanal-Auswahl
+  sFrm:string; //Vektor-Auswahl-Rahmen ODER leer für erstes Bild
+  slImg:tStringList); //selektierte Kanäle
+const
+  cEpg = 'aII: Coordinate system unknown. Please add projektion!';
+  cStk = 'aII: No bands found at position: ';
+var
+  fxBnd:tn2Sgl=nil; //Bildkanal
+  iHig,iLow:integer; //letzter, erster Kanal (ab Eins!)
+  iStk:integer=0; //Kanäle im Ergebnis
+  rFrm:trFrm; //Auswahl-Rahmen
+  rHdr:trHdr; //aktuelle Metadaten
+  sCmp:string=''; //Name nach gdal_warp
+  sFrq:string=''; //Namen der einzelnen Kanäle
+  B,I:integer;
+begin
+  if iEpg=0 then
+  begin
+    iEpg:=Cover.CrsInfo(slImg[0]); //Projektion im ersten Bild
+    if iEpg<0 then Tools.ErrorOut(3,cEpg+slImg[0]);
+  end;
+  if length(sFrm)>0
+    then rFrm:=Cover.VectorFrame(sFrm) //ROI aus Polygon
+    else rFrm:=Cover._RasterFrame(slImg[0]); //ROI aus erstem Bild
+
+  for I:=0 to pred(slImg.Count) do
+  begin
+    sCmp:=eeHme+'c_'+ChangeFileExt(ExtractFileName(slImg[I]),''); //zwischenlager
+    Gdal.Warp(iEpg,iPix,rFrm,slImg[I],sCmp); //Transformieren, an Raster ausrichten
+    slImg[I]:=sCmp; //neuer Name
+  end;
+
+  Reduce.GetBands(iHig,iLow,MaxInt,sArt); //Kanal-Nummern aus Eingabe
+  if iHig<MaxInt then
+  begin
+    iStk:=succ(iHig-iLow); //neue Anzahl Kanäle
+    Header.Read(rHdr,slImg[0]); //einmal sollte genügen
+    for I:=0 to pred(slImg.Count) do
+    begin
+      sFrq:=''; //neu beginnen
+      Tools.EnviCopy(slImg[I],eeHme+'temp'); //Zwischenlager
+      for B:=pred(iLow) to pred(iHig) do //gewählte Kanäle
+      begin
+        fxBnd:=Image.ReadBand(B,rHdr,eeHme+'temp'); //aus Kopie laden
+        Image.WriteBand(fxBnd,B-pred(iLow),slImg[I]); //Original überschreiben
+        sFrq+='B'+IntToStr(succ(B))+#10; //Kanal-Nummer + Zeilentrenner
+      end;
+      Delete(sFrq,length(sFrq),1); //Letzte Zeilentrenner löschen
+      Header.WriteMulti(iStk,iStk,rHdr,sFrq,slImg[I]);
+      Tools.HintOut(true,'ImageImport: '+ExtractFileName(slImg[I]));
+    end;
+  end;
+end;
+
+{ aCI extrahiert der String Nr. "iPst" aus "sNme" und vergleicht ihn mit den
+  Vorgaben in "slItm". Die Worte müssen durch Underscores "_" getrennt sein.
+  Die Vorgabe muss zumindest Teil des extrahierten Worts sein. aCI prüft dabei
+  nur den Dateinamen, nicht den Pfad }
+
+function tArchive.CheckItem(
+  sNme:string; //Datename
+  iPst:integer; //Position des gesuchten Worts (ab Eins)
+  slItm:tStringList): //zulässige Ergebnisse als Liste
+  boolean; //Treffer!
+var
+  sPrt:string=''; //mit "iPst" gesuchtes Wort aus "sNme"
+  I:integer;
+begin
+  if (iPst>0) and (slItm.Count>0) then
+  begin
+    Result:=False; //Vorgabe = Übereinstimmung suchen
+    sNme:=Tools._LastName(sNme);
+    sPrt:=ExtractWord(iPst,sNme,['_']); //gesuchtes Wort
+    for I:=0 to pred(slItm.Count) do
+      if slItm[I]=sPrt then
+      begin
+        Result:=True;
+        break
+      end;
+  end
+  else Result:=True; //alles akzeptieren
+end;
+
+{ aCP prüft ob das Wort Nr. "iPst" im String "sNme" als Datum interpretiert
+  werden kann und in den Zeitraum von "iLow" bis "iHig" fällt. Die Worte in
+  "sNme" müssen duch Underscores "_" getrennt sein. aCP prüft nur den Datei-
+  Namen ohne den Pfad. }
+
+function tArchive.CheckPeriod(
+  sNme:string; //Datename OHNE Pfad!
+  iPst:integer; //Position des gesuchten Worts (ab Eins)
+  iLow:integer; //erstes Datum als Zahl (YYYYMMDD)
+  iHig:integer): //letztes Datum als Zahl (YYYYMMDD)
+  boolean; //Treffer!
+var
+  iDat:integer=0; //Abschnitt als Zahl
+begin
+  if iPst>0 then
+  begin
+    Result:=False;
+    sNme:=Tools._LastName(sNme);
+    if TryStrToInt(LeftStr(ExtractWord(iPst,sNme,['_']),8),iDat) then
+      if (iDat>=iLow) and (iDat<=iHig) then
+        Result:=True;
+  end
+  else Result:=True; //alles akzeptieren
+end;
+
+{ aBE extrahiert Kanäle aus Archiven und gibt die Namen der Verzeichnisse für
+  die ausgewählten Bilder zurück. Kachel, Datum und Kanäle sind wählbar. Mit
+  "bQlt" wird der landsat-QA-Kanal ergänzt }
+{ aBE übernimmt in "sArc" einen Suchstring für alle Archive und reduziert diese
+  Liste mit "sFrq", sPrd" und "sTls" für Kanal-ID, Zeitperiode und Kachel-ID.
+  Kachel- und Kanal-ID können als CSV-Liste übergeben werden, das Datum muss
+  als Periode im Format YYYYMMDD-YYYYMMDD übergeben werden. }
+{ aBE erzeugt zunächst eine Liste aller Archive die zur Eingabe-Maske "sArc"
+  passen und reduziert sie mit "sPrd" und "sTls". Im zweiten Schritt erzeugt
+  aBE in "slBnd" ein Inhaltsverzeichnis der Archivs, wählt daraus alle Kanäle,
+  die zu "sTls" passen und extrahiert die gewählten Kanäle in Verzeichnisse mit
+  einem verkürzten Namen des Archivs }
+
+// wahlweise Archive extrahieren ODER Kanäle kopieren, beide selektiv
+
+function tArchive.xSelectLandsat(
+  bQlt:boolean; //QA-Layer integrieren
+  sArc:string; //Filter für Archiv-Namen
+  sFrq:string; //zulässige Kanal-Namen als CSV.
+  sPrd:string; //Zeitperiode als "YYYYMMDD-YYYYMMDD"
+  sTls:string): //zulässige Kachel-IDs als CSV.
+  tStringList; //Namen der gewählten Archive
+const
+  cBnd='aBE: Band names not found: ';
+  cDat='aBE: Image Archives not found at: ';
+  cPrd='aBE: Date input [YYYYMMDD-YYYYMMDD] not defined: ';
+  cPst='aBE: Sensor type not detected!';
+var
+  iHig,iLow:integer; //Datum bis|von als YYYYMMDD
+  slBnd:tStringList=nil; //Liste mit passenden Kanal-Namen
+  slFrq:tStringList=nil; //zulässige Kanal-Namen (IDs des Providers)
+  slTle:tStringList=nil; //zulässige Kachel-Namen (IDs des Providers)
+  A,B:integer;
+  qA:string;
+begin
+  Result:=Tools.FileFilter(sArc); //Archiv-Namen Vorauswahl
+  if Result.Count<1 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+  GetPeriod(iHig,iLow,sPrd); //Zeitperiode [iLow..iHig] ODER Alles
+  try
+    slFrq:=tStringList.Create;
+    if bQlt and (sFrq<>'') then sFrq+=', PIXEL'; //QA-Maske ergänzen
+    slFrq.CommaText:=sFrq; //gewählte Kanal-Namen als Liste
+    slTle:=tStringList.Create;
+    slTle.CommaText:=sTls; //gewählte Kachel-IDs als Liste
+
+//- sensorunabhängig -----------------------------------------------------------
+    for A:=pred(Result.Count) downto 0 do
+    begin
+      qA:=Result[A];
+      if (CheckItem(Result[A],cmLst[1],slTle)=False) //passende Kachel?
+      or (CheckPeriod(Result[A],cmLst[3],iLow,iHig)=False) then //passendes Datum?
+        Result.Delete(A); //Verzeichnis aus Liste entfernen
+    end;
+    if Result.Count=0 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+//------------------------------------------------------------------------------
+
+    for A:=0 to pred(Result.Count) do
+    begin
+      qA:=Result[A];
+      slBnd:=TarContent(Result[A],nil); //Kanäle im Archiv ohne Pfadnamen
+
+//- sensorunabhängig -----------------------------------------------------------
+      for B:=pred(slBnd.Count) downto 0 do
+        if CheckItem(slBnd[B],cmLst[2],slFrq)=False then
+          slBnd.Delete(B); //Kanal aus Liste löschen
+      if slBnd.Count=0 then Tools.ErrorOut(3,cBnd+slFrq.CommaText); //leere Liste
+//------------------------------------------------------------------------------
+
+      Result[A]:=TarExtract(Result[A],slBnd); //slBnd nach Result[A] extrahieren
+    end;
+  finally
+    slBnd.Free;
+    slFrq.Free;
+    slTle.Free;
+  end;
+end;
+
+{ aBE extrahiert Kanäle aus Archiven und gibt die Namen der Verzeichnisse für
+  die ausgewählten Bilder zurück. Kachel, Datum und Kanäle sind wählbar. Mit
+  "bQlt" wird der landsat-QA-Kanal ergänzt }
+{ aBE übernimmt in "sArc" einen Suchstring für alle Archive und reduziert diese
+  Liste mit "sFrq", sPrd" und "sTls" für Kanal-ID, Zeitperiode und Kachel-ID.
+  Kachel- und Kanal-ID können als CSV-Liste übergeben werden, das Datum muss
+  als Periode im Format YYYYMMDD-YYYYMMDD übergeben werden. }
+{ aBE erzeugt zunächst eine Liste aller Archive die zur Eingabe-Maske "sArc"
+  passen und reduziert sie mit "sPrd" und "sTls". Im zweiten Schritt erzeugt
+  aBE in "slBnd" ein Inhaltsverzeichnis der Archivs, wählt daraus alle Kanäle,
+  die zu "sTls" passen und extrahiert die gewählten Kanäle in Verzeichnisse mit
+  einem verkürzten Namen des Archivs }
+{ ToDo: Sentinel-Kanäle auch aus Archiv extrahieren }
+
+function tArchive.xSelectSentinel(
+  sArc:string; //Filter für Archiv-Namen
+  sFrq:string; //zulässige Kanal-Namen als CSV.
+  sPrd:string; //Zeitperiode als "YYYYMMDD-YYYYMMDD"
+  sTls:string): //zulässige Kachel-IDs als CSV.
+  tStringList; //Namen der gewählten Archive
+const
+  cBnd='aBE: Band names not found: ';
+  cDat='aBE: Image Archives not found at: ';
+  cPrd='aBE: Date input [YYYYMMDD-YYYYMMDD] not defined: ';
+  cPst='aBE: Sensor type not detected!';
+var
+  iHig,iLow:integer; //Datum bis|von als YYYYMMDD
+  slBnd:tStringList=nil; //Liste mit passenden Kanal-Namen
+  slFrq:tStringList=nil; //zulässige Kanal-Namen (IDs des Providers)
+  slTle:tStringList=nil; //zulässige Kachel-Namen (IDs des Providers)
+  A,B:integer;
+  qA:string;
+begin
+  Result:=Tools._DirectoryFilter_(sArc); //Verzeichnisse Vorauswahl
+  if Result.Count<1 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+  GetPeriod(iHig,iLow,sPrd); //Zeitperiode ODER Alles
+  try
+    slFrq:=tStringList.Create;
+    slFrq.CommaText:=sFrq; //gewählte Kanal-Namen als Liste
+    slTle:=tStringList.Create;
+    slTle.CommaText:=sTls; //gewählte Kachel-IDs als Liste
+
+    //siehe Landsat
+    for A:=pred(Result.Count) downto 0 do
+      if (CheckItem(Result[A],cmS2b[1],slTle)=False) //passende Kachel?
+      or (CheckPeriod(Result[A],cmS2b[3],iLow,iHig)=False) then //passendes Datum?
+        Result.Delete(A); //Verzeichnis aus Liste entfernen
+    if Result.Count=0 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+
+    //siehe Landsat
+    for A:=0 to pred(Result.Count) do
+    begin
+      qA:=Result[A];
+      slBnd:=Tools.FileFilter(Result[A]+'*'); //Kanäle im Verzeichnis ohne Pfadnamen
+      for B:=pred(slBnd.Count) downto 0 do
+        if CheckItem(slBnd[B],cmS2b[2],slFrq)=False then
+          slBnd.Delete(B); //Kanal aus Liste löschen
+      if slBnd.Count=0 then Tools.ErrorOut(3,cBnd+slFrq.CommaText); //leere Liste
+      Result[A]:=Tools._ImportList(Result[A],slBnd); //Kanäle im Arbeitsverzeichnis
+    end;
+  finally
+    slBnd.Free;
+    slFrq.Free;
+    slTle.Free;
+  end;
+end;
+
+// gültiges Datum am Ende von allen Dateinamen in slImg?
+
+function tArchive.ValidDate(slImg:tStringList):boolean;
+var
+  iFit:integer=0; //Anzahl gültige Angaben
+  iDat:integer=0; //Nimmt Datum auf
+  I:integer;
+begin
+  Result:=False;
+  for I:=0 to pred(slImg.Count) do
+    if TryStrToInt(RightStr(slImg[I],8),iDat) then inc(iFit);
+  Result:=iFit=slImg.Count;
+end;
+
+// Anzahl Kanäle für alle Bilder gleich?
+
+function tArchive.EqualStack(
+  iStk:integer; //Anzahl Kanäle "soll"
+  slImg:tStringList):boolean;
+var
+  iFit:integer=0; //nzahl Kanäle wie slImg[0]
+  I:integer;
+begin
+  Result:=False;
+  for I:=0 to pred(slImg.Count) do
+    if StrToInt(Header.ReadLine(False,'bands',slImg[I]))=iStk then inc(iFit); //passt!
+  Result:=iFit=slImg.Count;
+end;
+
+{ aMB verknüpft alle Bilder in "slImg" zu einem Stack und vereinigt dabei
+  Kanäle aus dem gleichen Flugpfad. Dazu müssen CRS, Bildgröße und Pixel gleich
+  sein. Nach "ImageImport" ist das der Fall. Mit "sTrg" kann ein Name gewählt
+  werden. }
+{ aMB überträgt nacheinander gleiche Kanäle aus den verschiedenen Bildern in
+  den Stack. Dabei überschreibt aIC Kanäle mit gleichem Datum, alle anderen
+  werden in getrennte Layer kopiert. Gleiches Datum bedeutet gleicher Flugpfad.
+  aIC sortiert die Bilder zu Beginn der Procedur. aIC zählt die resultierenden
+  Kanäle und beschriftet sie nach Bild und Kanal-ID }
+{ ==> GDAL.WARP ZUSAMMEN MIT EINEM FRAME GARANTIERT, DASS ALLE BILDAUSSCHNITTE
+      GLEICH GROSS SIND }
+
+procedure tArchive.xMergeBands(
+  sTrg:string; //Ergebnis-Name ODER '' für "compile"
+  slImg:tStringList); //selektierte Bilder
+const
+  cImg = 'aMB: Selected image names must end with a date [YYYYMMDD]!';
+  cStk = 'aMB: Selected imageges must share the same number of bands!';
+var
+  fxRes:tn2Sgl=nil; //Bildkanal Ergebnis
+  fxTmp:tn2Sgl=nil; //Bildkanal Zwischenlager
+  iHig:integer=0; //Ende der Periode mit gleichem Datum
+  iLow:integer=0; //Beginn der Periode mit gleichem Datum
+  iStk:integer=0; //Kanäle im Ergebnis
+  rHdr:trHdr; //aktuelle Metadaten
+  sFrq:string=''; //Namen der einzelnen Kanäle
+  B,I,X,Y:integer;
+begin
+  //slImg=nil? slImg.Count=0?
+  Header.Read(rHdr,slImg[0]); //Vorbild
+  if not ValidDate(slImg) then Tools.ErrorOut(3,cImg);
+  if not EqualStack(rHdr.Stk,slImg) then Tools.ErrorOut(3,cStk);
+  slImg.CustomSort(@EndDate); //Nach Datum [YYYYMMDD] am Ende sortieren
+  if sTrg='' then sTrg:=eeHme+cfCpl; //Vorgabe-Name
+  repeat
+    iHig:=iLow;
+    while (iHig<pred(slImg.Count)) //Nachfolger existiert
+    and (RightStr(slImg[succ(iHig)],8)=RightStr(slImg[iLow],8)) do //gleiches Datum
+      inc(iHig);
+    for B:=0 to pred(rHdr.Stk) do
+    begin
+      fxRes:=Image.ReadBand(B,rHdr,slImg[iLow]); //Ergebnis-Vorlage
+      for I:=succ(iLow) to iHig do
+      begin
+        fxTmp:=Image.ReadBand(B,rHdr,slImg[I]);
+        for Y:=0 to pred(rHdr.Lin) do
+          for X:=0 to pred(rHdr.Scn) do
+            if not isNan(fxTmp[Y,X]) then
+              fxRes[Y,X]:=fxTmp[Y,X];
+      end;
+      Image.WriteBand(fxRes,iStk,sTrg); //(vereinigtes) Ergebnis
+      sFrq+='B'+IntToStr(succ(iStk mod rHdr.Stk))+'-'+IntToStr(succ(B))+#10;
+      inc(iStk);
+    end;
+    iLow:=succ(iHig);
+  until iLow>=slImg.Count;
+  Delete(sFrq,length(sFrq),1); //Letztes Zeichen (#10) löschen
+  Header.WriteMulti(rHdr.Stk,iStk,rHdr,sFrq,sTrg);
+  Tools.HintOut(true,'MergeBands: '+ExtractFileName(sTrg));
+end;
+
+{ aQI bestimmt den Anteil klarer Pixel im QA-Layer aus dem Verzeichnis "sDir",
+  speichert den Layer als [0,1]-Maske "mask" und gibt die Namen aller anderen
+  Layer im Verzeichnis "sDir" zurück. Dabei verwendet aQI nur den Ausschnitt
+  "sFrm". Wenn der QA-Layer weniger als 50% klare Pixel enthält, ist die Namen-
+  Liste leer }
+{ aQI erzeugt mit "sFrm" einen Ausschnitt aus dem QA-Layer und transformiert
+  den Binär-Code für Wolken, Schatten und Cirren in eine [0,1]-Maske. aQI zählt
+  die klaren Pixel. Die Maske muss mindestens 1000 Pixel und 50% Abdeckung für
+  echte Pixel haben. aQI speichert akzeptierte Masken als "mask" und gibt die
+  Namen der übrigen Layer aus dem Verzeichnis "sDir" nur dann zurück, wenn die
+  Maske akzeptiert ist }
+{ todo: Eigene Q-Maske: Ausreißer aus kurzen Zeitreihen }
+
+function tArchive.xQualityMask(
+  sFrm:string; //Rahmen mit Kachel-ID
+  sDir:string): //Verzeichnisse mit extrahierten Bildern
+  single; //Qualität ablehnen|akzeptieren = [0,1]
 const
   cCld = $300; //2⁸+2⁹ = Clouds (768)
   cSdw = $C00; //2¹⁰+2¹¹ = Shadow (3072)
   cIce = $3000; //2¹²+2¹³ = Ice, Snow (12288)
   cCir = $C000; //2¹⁴+2¹⁵ = Cirrus (49152)
 var
-  iCnt:integer=0; //Pixel innerhalb der Kachel, einschließlich leere Pixel am rand
-  iEpg:integer=4326; //Projektion im Archiv (EPSG)
-  iPix:integer=0; //Pixel ohne Störung
-  ixBin:tn2Wrd=nil; //Landsat-QA-Layer
-  rHdr:trHdr; //Metadaten
-  slBnd:tStringList=nil; //Dateien im Archiv, ausgewählte Kanäle
-  X,Y:integer;
+  iClr:integer=0; //Anzahl klare Pixel in der Maske
+  iCnt:integer=0; //Anzahl definierte Pixel in der Maske
+  ixBin:tn2Wrd=nil; //QA-Kanal, Ausschnitt "rFrm"
+  rFrm:trFrm; //Auswahl-Rahmen aus Eingabe
+  rHdr:trHdr; //Metadaten Vorbild
+  slBnd:tStringList=nil;
+  R,X,Y:integer;
 begin
   Result:=0; //Vorgabe
+  //slDir.Count>in Parse.Import
   try
-    slBnd:=ExtractFilter(sArc,'_QA_PIXEL'); //QA-Layer extrahieren
-    iEpg:=Cover.CrsInfo(slBnd[0]); //EPSG-Code des QA-Layers
-    rSct:=Cover.Rotate(iEpg,rImg,rRoi); //auf "iEpg" rotierte Bounding-Boxen
-
-    if (rSct.Lft<rSct.Rgt) and (rSct.Top>rSct.Btm) then //Überlappung existiert
-    begin
-      Gdal.Import(0,0,1,rSct,slBnd[0],eeHme+cfImp); //Ausschnitt "rFrm, als "import"
-      DeleteFile(slBnd[0]); //Extrakt löschen
-      DeleteFile(slBnd[0]+cfExt); //Extrakt löschen
-      Header.Read(rHdr,eeHme+cfImp);
-      ixBin:=Image.ReadWord(rHdr,eeHme+cfImp); //QA-Layer
-      for Y:=0 to pred(rHdr.Lin) do
-        for X:=0 to pred(rHdr.Scn) do
-          if ixBin[Y,X]>1 then //Bildpixel innerhalb der Szene
-          begin
-            inc(iCnt); //Summe definierte Pixel
-            if (ixBin[Y,X] and cCld=cCld) //binäre Marker für Wolken und Schatten
-            or (ixBin[Y,X] and cSdw=cSdw)
-            or (ixBin[Y,X] and cCir=cCir) then //Bildstörung
-              ixBin[Y,X]:=0 //Pixel maskieren
-            else
-            begin
-              ixBin[Y,X]:=1; //Pixel öffnen
-              inc(iPix); //Summe klare Pixel
-            end;
-          end;
-      if iCnt>0 then
-        Result:=iPix/iCnt; //Schwelle
-    end;
-    if Result>0 then
-    begin
-      Image.WriteWord(ixBin,eeHme+cfMsk); //als Maske speichern
-      Tools.CopyFile(eeHme+cfImp+cfHdr,eeHme+cfMsk+cfHdr); //Header kopieren
-    end;
-  finally
-    slBnd.Free;
-  end;
-  Tools.HintOut(true,'Archive.Quality: '+ExtractFileName(sArc));
-end;
-
-{ aIL extrahiert die Kanäle "sBnd" aus dem Archiv "sArc", beschneidet sie auf
-  den Ausschnitt "rFrm", kalibriert optische Kanäle mit Landsat-Konstanten,
-  setzt Pixel auf Nodata die in "sMsk" auf Null gesetzt sind und speichert das
-  Ergebnis als Stack im Arbeitsverzeichnis. Der Ergebnis-Name enthält ein
-  Sensor-Kürzen, die Kachel-ID und das Datum.
-     aIL extrahiert ganze Kanäle in das aktuelle Verzeichnis und speichert das
-  Ergebnis im IDL-Format in das Arbeitsverzeichnis. aIL löscht alle Zwischen-
-  Produkte. }
-
-function tArchive.ImportLandsat(
-  rFrm:trFrm; //Bounding-Box des ROI, geographisch
-  sArc:string; //Archiv-Name
-  sBnd:string): //Kanal-Namen-Filter, kommagetrennt
-  string; //Name multispektrales Bild
-const
-  cBnd = 'aIL: No results for passed band filter: ';
-  cFct:single=2.75e-5; //optische Kanäle
-  cNod:single=0.0; //NoData-Äquivalent in Rohdaten
-  cOfs:single=-0.2; //optische Kanäle
-{ TODO: der Landsat-Thermal-Kanal (B10) braucht eine andere Calibrierung}
-var
-  faFct:tnSgl=nil; //Kanal-spezifische Faktoren für Kalibrierung
-  slBnd:tStringList=nil; //Kanäle im Archiv
-  B:integer;
-  qS:string;
-begin
-  Result:=Tools.ShortName(1,3,4,sArc); //Sensor-Kachel-Datum
-  try
-    slBnd:=ExtractFilter(sArc,sBnd); //ausgewählte Kanäle extrahieren
-    if slBnd=nil then Tools.ErrorOut(2,cBnd+sBnd); //kein passender Kanal
-    faFct:=Tools.InitSingle(slBnd.Count,dWord(cFct)); //konstanter Faktor für alle Kanäle
-    for B:=0 to pred(slBnd.Count) do
-    begin
-      Gdal.Import(1,0,1,rFrm,slBnd[B],eeHme+cfImp); //Float-Format, manueller Ausschnitt, als "import"
-      DeleteFile(slBnd[B]); //Zwischenlager löschen
-      DeleteFile(slBnd[B]+cfExt); //Extrakt löschen
-      qS:=ExtractWord(9,ChangeFileExt(ExtractFileName(slBnd[B]),''),['_']);
-      slBnd[B]:=Result+'_'+ExtractWord(9,ChangeFileExt(ExtractFileName(slBnd[B]),''),['_']);
-      Tools.EnviRename(eeHme+cfImp,slBnd[B]); //Zwischenlager, getrennte Kanäle
-    end;
-    Image.StackBands(slBnd,eeHme+cfMsk); //Kanäle als Stack & maskieren
-    Filter.Calibrate(faFct,cOfs,cNod,eeHme+cfStk); //Dichte kalibrieren
-    Tools.EnviRename(eeHme+cfStk,Result); //
-    for B:=0 to pred(slBnd.Count) do
-      Tools.EnviDelete(slBnd[B]); //aufräumen
-  finally
-    slBnd.Free;
-  end;
-  Tools.HintOut(true,'Archive.Import: '+ExtractFileName(Result));
-end;
-
-{ mCt transformiert beliebige Bilddaten in das ENVI-Format und speichert sie im
-  Arbeitsverzeichnis. Das Format ist immer 32-Bit Float (single). Pixelgröße,
-  Projektion und Kanäle sind wählbar. "slImg" übergibt die Ergebnis-Namen. }
-{ mCt ändert zuerst das Format nach ENVI / Single (gdal.import) und dann
-  Projektion und Pixelgröße nach "iEpg" (gdal.warp) / "fPix". Die Trennung ist
-  nötig, weil nur der "import"-Befehl einzelne Kanäle selektieren kann. }
-
-procedure tArchive.xTransform(
-  fPix:double; //Pixelgröße ODER Null für unverändert
-  iEpg:integer; //CRS als EPEG-Nummer ODER Null für unverändert
-  sArt:string; //Kanal-Auswahl [BX:BY] mit [X,Y] ab Eins ODER leer für alle Kanäle
-  slImg:tStringList); //Namen der Eingangs-Bilder und Namen der Ergebnisse
-var
-  iHig,iLow:integer; //letzter, erster Kanal
-  rCvr:trCvr; //Metadaten für einzelne Bilder
-  sRes:string=''; //Dateiname wechselt durch Bearbeitung
-  I:integer;
-begin
-  for I:=0 to pred(slImg.Count) do
-  begin
-    rCvr:=Cover.RasterFrame(slImg[I]); //Bild-Metadaten
-    Reduce.GetBands(iHig,iLow,rCvr.Stk,sArt); //ausgewählte Kanäle
-    sRes:=slImg[I]; //für Bearbeitungs-Stufen
-    if (ExtractFilePath(slImg[I])<>eeHme) or (sArt<>'') then
-    begin
-      Gdal.Import(1,iHig,iLow,crFrm,slImg[I],''); //als "import" im Arbeitsverzeichnis
-      sRes:=eeHme+cfImp; //Zwischenlager
-    end;
-    if ((iEpg>0) and (iEpg<>rCvr.Epg))
-    or ((fPix>0) and (fPix<>rCvr.Pix)) then //Projektion, Pixelgröße ändern
-    begin
-      Gdal.Warp(iEpg,round(fPix),sRes,''); //als "warp" im Arbeitsverzeichnis
-      sRes:=eeHme+cfWrp //Zwischenlager
-    end;
-    slImg[I]:=eeHme+ChangeFileExt(ExtractFileName(slImg[I]),''); //ursprünglicher Name
-    Tools.EnviRename(sRes,slImg[I]); //Name vergeben
-  end;
-  Tools.HintOut(true,'Merge.Transform: '+IntToStr(slImg.Count)+' imges');
-end;
-
-{ mCp schreibt alle Bilder in "slImg" in den gemeinsamen Rahmen "rFrm". mCP
-  trennt Bilder mit verschiedenem Datum und überschreibt Bilder mit gleichem
-  Datum. mCp setzt die Bilder an die richtigen Position und löscht alle Bild-
-  Teile außerhalb des Rahmens. Pixelgröße, Kanäle und Projektion aller Bilder
-  müssen gleich sein. mCp setzt leere Bildteile auf NoData. }
-{ Für die Überlagerung müssen die Bilder nach dem datum sortiert sein.  mCp
-  erzeugt aus "rFrm" eine leere (NoData) Vorlage und ergänzt sukzessive die
-  übergebenen Bilder. mCp bestimmt für jedes Bild den Versatz der Bilddaten
-  zum Rahmen (iHrz,iVrt) und die verwendbare Fläche innerhalb des Rahmens
-  (iRgt,iTop,iLft,iBtm). mCp überträgt alle Kanäle und ignoriert dabei NoData-
-  Pixel im Vorbild. mCp überschreibt die Pixel des Vorgängers, wenn zwei Bilder
-  dasselbe Datum haben  (gleicher Pfad). mCp erzeugt für jedes neue Datum ein
-  neues leeres Bild und speichert erst, wenn alle Bilder mit gleichem Datum
-  erfasst sind. mCp erzeugt und speichert einen Header mit den Koordinaten aus
-  dem Rahmen. }
-
-procedure tArchive.xCompile(
-  iMrg:integer; //Überschreiben: 8=Datum; 4=Jahr; 0=Alles trennen
-  rFrm:trFrm; //Auswahlrahmen
-  sTrg:string; //Ergebnis-Name ODER leer für Vorgabe
-  slImg:tStringList); //Liste Bildnamen
-const
-  cFrm = 'mCp: Image frame (ROI) not defined!';
-var
-  fPix:double=0; //gemeinsame Pixelgröße
-  fxImg:tn3Sgl=nil; //Kanal im aktuellen Bild
-  fxRes:tn3Sgl=nil; //Ergebnis-Kanal, ganze Fläche
-  iLft,iTop,iRgt,iBtm:integer; //Pixel-Koordinaten für nutzbaren Ausschnitt im Rahmen
-  iHgt,iWdt:integer; //Bildfläche aus Rahmen ODER alle übergebenen Bilder
-  iHrz,iVrt:integer; //Versatz Bild gegen Rahmen in Pixeln (AUCH NEGATIV!)
-  iStk:integer=0; //Anzahl Kanäle
-  iPrd:integer=0; //Kanäle pro Einzelbild (aus Import)
-  rHdr:trHdr; //ENVI-Metadaten
-  sBnd:string=''; //Kanal-Namen mit Zeilentrenner
-  B,I,X,Y:integer;
-begin
-  //Bildnamen dürfen keine Extension haben (ENVI-Stil)
-  with rFrm do if (Top<Btm) or (Rgt<Lft) then Tools.ErrorOut(3,cFrm);
-  if slImg.Count<1 then exit;
-  if sTrg='' then sTrg:=eeHme+cfCpl; //Vorgabe verwenden
-
-  Header.Read(rHdr,slImg[0]); //"fPix", "iPrd" werden kontrolliert
-  fPix:=rHdr.Pix; //gemeinsame Pixelgröße
-  iPrd:=rHdr.Stk; //Anzahl Kanäle aus erstem Bild
-  iHgt:=round((rFrm.Top-rFrm.Btm)/fPix);
-  iWdt:=round((rFrm.Rgt-rFrm.Lft)/fPix);
-  for I:=0 to pred(slImg.Count) do
-  begin
-    if I>0 then Header.Read(rHdr,slImg[I]);
-    if (I>0) and ((rHdr.Pix<>fPix) or (rHdr.Stk<>iPrd)) then
-      Tools.ErrorOut(3,slImg[I]); //Kanäle müssen passen
-    if (I=0) //erster Kanal
-    or ((iMrg>0) //Datum/Jahr verwenden
-    and (RightStr(slImg[pred(I)],iMrg)<>RightStr(slImg[I],iMrg))) then
-      fxRes:=Tools.Init3Single(rHdr.Stk,iHgt,iWdt,dWord(NaN)); //leere Vorlage
-
-    iHrz:=round((rHdr.Lon-rFrm.Lft)/fPix); //Versatz horizontal in Pixeln
-    iVrt:=round((rFrm.Top-rHdr.Lat)/fPix); //Versatz vertikal in Pixeln
-    iLft:=max(iHrz,0); //Pixelindx linker Rand
-    iTop:=max(iVrt,0); //Pixelindex oberer Rand
-    iRgt:=min((rHdr.Scn+iHrz),iWdt); //Pixelindex rechter Rand
-    iBtm:=min((rHdr.Lin+iVrt),iHgt); //Pixelindex unterer Rand
-
-    fxImg:=Image.Read(rHdr,slImg[I]);
-    for Y:=iTop to pred(iBtm) do //alle gemeinsam abgedeckten Pixel
-      for X:=iLft to pred(iRgt) do
-        if not isNan(fxImg[0,Y-iVrt,X-iHrz]) then //nur gültige Pixel
-          for B:=0 to pred(iPrd) do
-            fxRes[B,Y,X]:=fxImg[B,Y-iVrt,X-iHrz]; //Bild in Vorlage einfügen
-
-    if (I=pred(slImg.Count)) //letzter Kanal
-    or ((iMrg>0) //Datum/Jahr verwenden
-    and (RightStr(slImg[I],iMrg)<>RightStr(slImg[succ(I)],iMrg))) then //aktuellen tag speichern
-      for B:=0 to pred(iPrd) do
+    slBnd:=Tools.FileFilter(Tools.SetDirectory(sDir)+'*'); //alle Dateien im Verzeichnis
+    slBnd.Sort; //Kanäle ordnen
+    for R:=0 to pred(slBnd.Count) do
+      if RightStr(slBnd[R],13)='_QA_PIXEL.TIF' then //nur Landsat QA-Kanäle
       begin
-        Image.WriteBand(fxRes[B],iStk,sTrg); //aktuellen Kanal speichern
-        sBnd+=RightStr(slImg[I],iMrg)+' B'+IntToStr(succ(B))+#10; //Datum + Kanal für Header
-        inc(iStk); //gespeicherte Kanäle
-      end;
-    write(#13,IntToStr(slImg.Count-I))
-  end;
+        rFrm:=Cover.FrameWarp(sFrm,slBnd[R]); //Rahmen in Projektion der Bilddaten
+        Gdal.Translate(0,0,1,rFrm,slBnd[R],eeHme+cfMsk); //Ausschnitt "rFrm" im ENVI-Format
+        Header.Read(rHdr,eeHme+cfMsk); //Metadaten
+        ixBin:=Image.ReadWord(rHdr,eeHme+cfMsk); //QA-Layer als 16-Bit-Integer Ausschnitt "rFrm"
 
-  rHdr.Lat:=round(rFrm.Top/fPix)*fPix; //Frame auf Pixel-Raster normieren
-  rHdr.Lon:=round(rFrm.Lft/fPix)*fPix;
-  Header.Origin(rHdr.Lat,rHdr.Lon,rHdr); //mapinfo-String verändern
-  rHdr.Scn:=iWdt; //neue Parameter
-  rHdr.Lin:=iHgt;
-  rHdr.Stk:=iStk;
-  rHdr.Prd:=iPrd;
-  delete(sBnd,length(sBnd),1); //letztes Zeichen (#10) löschen
-  Header.WriteMulti(rHdr,sBnd,sTrg);
-  Tools.HintOut(true,'Merge.Compile('+IntToStr(I)+'): '+ExtractFileName(sTrg));
+        iClr:=0; iCnt:=0; //neu zählen
+        for Y:=0 to high(ixBin) do
+          for X:=0 to high(ixBin[0]) do
+            if ixBin[Y,X]>1 then //definierter Bildbereich
+            begin
+              inc(iCnt); //Summe definierte Pixel
+              if (ixBin[Y,X] and cCld=cCld) //binäre Marker für Wolken und Schatten
+              or (ixBin[Y,X] and cSdw=cSdw)
+              or (ixBin[Y,X] and cCir=cCir) //Bildstörung
+                then ixBin[Y,X]:=0 //Pixel maskieren
+                else ixBin[Y,X]:=1; //Pixel übernehmen
+              if ixBin[Y,X]>0 then inc(iClr) //klare Pixel zählen
+            end
+            else ixBin[Y,X]:=0; //Pixel maskieren
+
+        if iClr>1000 //mindestens 1000 Pixel
+          //iQlt:=iClr*1000 div iCnt; //rundet ab
+          then Result:=iClr/iCnt //Anteil klare Pixel als Promille
+          else Result:=0; //Qualität ablehnen
+        //Result.Objects[R]:=tObject(pointer(iQlt)); //QA-Layer & Quality-ID listen
+        if Result>0.5 then //mindestens 50% Abdeckung
+          Image.WriteWord(ixBin,eeHme+cfMsk); //Daten überschreiben, Header bleibt gültig
+        Tools.HintOut(true,'QualityMask: '+FloatToStrF(Result,ffFixed,7,3));
+      break; //nur ein Kanal
+    end;
+  finally
+    slBnd.Free;
+  end;
 end;
 
-{ aBN trägt die Dateinamen aus "slImg" als Kanal-Namen in die Envi-Header ein,
-  wenn der bishereige Kanal-Name mit "Band" beginnt. GDAL setzt "Band" + Nummer
-  wenn keine anderen Kanal-Namen registriert sind. }
+{ aBI kombiniert alle Kanäle aus "slBnd" zu einem Multi-Kanal-Bild in den
+  Grenzen von "sFrm", speichert das Ergenis mit STD-Namen und gibt den Namen
+  zurück. Mit "bQlt" maskiert aBI alle Pixel, die in der Maske den Wert Null
+  haben }
+{ aBI transformiert das CRS von "sFrm" in das CRS der Bilddaten, beschneidet
+  damit das Original und bildet einen Stack aus allen Kanälen in "slBnd". aBI
+  speichert das Ergebnis als "Sensor_Kachel_Kanal_Datum" }
 
-procedure tArchive.BandNames(slImg:tStringList);
+function tArchive.xBandsImport(
+  bQlt:boolean; //QA-Maske verwenden
+  iSns:integer; //Sensor-Typ
+  sFrm:string; //Auswahl-Rahmen
+  sDir:string): //Verzeichnis mit Bilddaten
+  string; //Name für Multikanal-Bild
+const
+  cHdr = 'aBI: Quality mask and image bands do not match: ';
 var
-  rHdr:trHdr;
-  sBnd:string; //Kanal-Namen mit Zeilentrennern
-  B,I:integer;
-  qS:string;
+  aIdf:taIdf; //Position der Marker im Original
+  fxBnd:tn2Sgl=nil; //ausgeschnittener Kanal
+  ixMsk:tn2Wrd=nil; //Maske
+  rFrm:trFrm; //Rahmen und Kachel-ID
+  rHdr:trHdr; //Metadaten
+  sFrq:string=''; //Kanal-Namen, getrennt durch Zeilenwechsel
+  slBnd:tStringList=nil; //Kanal-Namen
+  B,X,Y:integer;
 begin
-  for I:=0 to pred(slImg.Count) do
-  begin
-    Header.Read(rHdr,slImg[I]);
-    qS:=slImg[I];
-    sBnd:=''; //neu zusammenstellen
-    for B:=1 to WordCount(rHdr.aBnd,[#10]) do
-      sBnd:=ExtractWord(B,rHdr.aBnd,[#10])+#32+ //alter Kanal-Name
-        ChangeFileExt(ExtractFileName(slImg[I]),'')+#10; //Erweiterung + Zeilentrenner
-    Delete(sBnd,length(sBnd),1); //Zeilentrenner am Ende
-    rHdr.aBnd:=sBnd;
-    Header.Write(rHdr,'bandnames',slImg[I]);
+  case iSns of
+    1:aIdf:=cmLst;
+    3:aIdf:=cms2b;
+    else aIdf:=cmImd;
   end;
+  if iSns<>1 then bQlt:=False; //QA-Layer NUR für Landsat
+{ TODO: Die Position der Identifier im Dateinamen je nach Sensor muss ein Array
+  werden und der Sensor-Typ ist der Index. Anpassen!}
+
+  try
+    slBnd:=Tools.FileFilter(Tools.SetDirectory(sDir)+'*'); //alle Kanal-Namen im Verzeichnis
+    for B:=pred(slBnd.Count) downto 0 do
+      if RightStr(slBnd[B],13)='_QA_PIXEL.TIF' then //Landsat QA-Maske
+        slBnd.Delete(B); //QA-Maske ignorieren
+    slBnd.Sort; //Kanal-Reihenfolge
+
+    Result:=eeHme+ShortName(aIdf,slBnd[0]); //Name im Arbeitsverzeichnis
+{ TODO: ShortName liefert nur Sensor }
+    rFrm:=Cover.FrameWarp(sFrm,slBnd[0]); //Rahmen in Projektion der Bilddaten
+    if bQlt then
+    begin //Maske mit QA-Information lesen
+      Header.Read(rHdr,eeHme+cfMsk);
+      ixMsk:=Image.ReadWord(rHdr,eeHme+cfMsk)
+    end;
+
+    for B:=0 to pred(slBnd.Count) do //alle Kanäle (ohne QA-Kanal)
+    begin //Bild-Kanäle lesen, maskieren und stapeln
+      Gdal.Translate(1,0,1,rFrm,slBnd[B],eeHme+cfImp); //Ausschnitt "rFrm" als "import" speichern
+      if B=0 then Header.Read(rHdr,eeHme+cfImp); //einmal müsste genügen
+      fxBnd:=Image.ReadBand(0,rHdr,eeHme+cfImp);
+      if bQlt then
+      begin
+        for Y:=0 to pred(rHdr.Lin) do
+          for X:=0 to pred(rHdr.Scn) do
+            if ixMsk[Y,X]=0 then fxBnd[Y,X]:=NaN;
+      end;
+      Image.WriteBand(fxBnd,B,Result);
+      sFrq+='B'+IntToStr(succ(B))+#10;
+    end;
+    Delete(sFrq,length(sFrq),1); //Letztes "#10" löschen
+    Header.WriteMulti(slBnd.Count,slBnd.Count,rHdr,sFrq,Result);
+  finally
+    slBnd.Free
+  end;
+  Tools.HintOut(true,'BandsImport: '+ExtractFileName(Result));
 end;
 
 initialization
@@ -2024,129 +1851,361 @@ end.
 
 {==============================================================================}
 
-procedure tMerge._xCompile_(
-  rFrm:trFrm; //Name Auswahlrahmen
-  sTrg:string; //Ergebnis-Name ODER leer für Vorgabe
-  slImg:tStringList); //Liste Bildnamen
-const
-  cFrm = 'mCp: Image frame (ROI) not defined!';
+{ aIC verknüpft alle Bilder in "slImg" zu einem Stack und vereinigt dabei
+  Kanäle aus dm gleichen Flugpfad (Datum). Dazu müssen CRS, Bildgröße und Pixel
+  gleich sein. Nach "ImageImport" ist das der Fall. Die Dateinamen müssen mit
+  Reduce.SortDate sortiert sein }
+{ aIC erkennt gleiche Flugpfade am gleichen Datum im Dateinamen. Das Datum muss
+  YYYYMMDD formatiert sein und am Ende des Namens stehen. aIC übernimmt gezielt
+  einzelne Kanäle aus den Vorbildern, überschreibt alle Werte<>NaN wenn sie
+  dasselbe Datum haben speichert alle anderen Kanäle analog zu aufeinander
+  liegenden multispektralen Bildern. Mit "sTrg" kann ein Name gewählt werden,
+  Vorgabe ist "compile" }
+
+procedure tArchive.x_ImageCompile_(
+  sTrg:string; //Ergebnis-Name ODER '' für "compile"
+  slImg:tStringList); //selektierte Kanäle
 var
-  fPix:double=0; //gemeinsame Pixelgröße
-  fxImg:tn3Sgl=nil; //Kanal im aktuellen Bild
-  fxRes:tn3Sgl=nil; //Ergebnis-Kanal, ganze Fläche
-  iLft,iTop,iRgt,iBtm:integer; //Pixel-Koordinaten für nutzbaren Ausschnitt im Rahmen
-  iHgt,iWdt:integer; //Bildfläche aus Rahmen ODER alle übergebenen Bilder
-  iHrz,iVrt:integer; //Versatz Bild gegen Rahmen in Pixeln (AUCH NEGATIV!)
-  iStk:integer=0; //Anzahl Kanäle
-  iPrd:integer=0; //Kanäle pro Einzelbild (aus Import)
-  rHdr:trHdr; //ENVI-Metadaten
-  sBnd:string=''; //Kanal-Namen mit Zeilentrenner
+  bGet,bSet:boolean; //Kanal laden, speichern
+  fxRes:tn2Sgl=nil; //Bildkanal Ergebnis
+  fxTmp:tn2Sgl=nil; //Bildkanal Zwischenlager
+  iStk:integer=0; //Kanäle im Ergebnis
+  rHdr:trHdr; //aktuelle Metadaten
+  sFrq:string=''; //Namen der einzelnen Kanäle
   B,I,X,Y:integer;
 begin
-  //Bildnamen dürfen keine Extension haben (ENVI-Stil)
-  with rFrm do if (Top<Btm) or (Rgt<Lft) then Tools.ErrorOut(3,cFrm);
-  if slImg.Count<1 then exit;
-  if sTrg='' then sTrg:=eeHme+cfCpl; //Vorgabe verwenden
-
-  Header.Read(rHdr,slImg[0]); //"fPix", "iPrd" werden kontrolliert
-  fPix:=rHdr.Pix; //gemeinsame Pixelgröße
-  iPrd:=rHdr.Stk; //Anzahl Kanäle aus erstem Bild
-  iHgt:=round((rFrm.Top-rFrm.Btm)/fPix);
-  iWdt:=round((rFrm.Rgt-rFrm.Lft)/fPix);
+  if sTrg='' then sTrg:=eeHme+cfCpl; //Vorgae-Name
+  Header.Read(rHdr,slImg[0]); //einmal sollte genügen
   for I:=0 to pred(slImg.Count) do
   begin
-    if I>0 then Header.Read(rHdr,slImg[I]);
-    if (I>0) and ((rHdr.Pix<>fPix) or (rHdr.Stk<>iPrd)) then
-      Tools.ErrorOut(3,slImg[I]); //Kanäle müssen passen
-    if (I=0) or (RightStr(slImg[pred(I)],8)<>RightStr(slImg[I],8)) then
-      fxRes:=Tools.Init3Single(rHdr.Stk,iHgt,iWdt,dWord(NaN)); //leere Vorlage
-
-    iHrz:=round((rHdr.Lon-rFrm.Lft)/fPix); //Versatz horizontal in Pixeln
-    iVrt:=round((rFrm.Top-rHdr.Lat)/fPix); //Versatz vertikal in Pixeln
-    iLft:=max(iHrz,0); //Pixelindx linker Rand
-    iTop:=max(iVrt,0); //Pixelindex oberer Rand
-    iRgt:=min((rHdr.Scn+iHrz),iWdt); //Pixelindex rechter Rand
-    iBtm:=min((rHdr.Lin+iVrt),iHgt); //Pixelindex unterer Rand
-
-    fxImg:=Image.Read(rHdr,slImg[I]);
-    for Y:=iTop to pred(iBtm) do //alle gemeinsam abgedeckten Pixel
-      for X:=iLft to pred(iRgt) do
-        if not isNan(fxImg[0,Y-iVrt,X-iHrz]) then //nur gültige Pixel
-          for B:=0 to pred(iPrd) do
-            fxRes[B,Y,X]:=fxImg[B,Y-iVrt,X-iHrz]; //Bild in Vorlage einfügen
-
-    if (I=pred(slImg.Count))
-    or (RightStr(slImg[I],8)<>RightStr(slImg[succ(I)],8)) then //aktuellen tag speichern
-      for B:=0 to pred(iPrd) do
+    bGet:=(I=0) or (RightStr(slImg[pred(I)],8)<>RightStr(slImg[I],8)); //Datum <> Vorgänger
+    bSet:=(I=pred(slImg.Count)) or (RightStr(slImg[succ(I)],8)<>RightStr(slImg[I],8)); //Datum <> Vorgänger
+    for B:=0 to pred(rHdr.Stk) do
+    begin
+      if bGet=False then
       begin
-        Image.WriteBand(fxRes[B],iStk,sTrg); //aktuellen Kanal speichern
-        sBnd+=RightStr(slImg[I],8)+' B'+IntToStr(succ(B))+#10; //Datum + Kanal für Header
-        inc(iStk); //gespeicherte Kanäle
+        fxTmp:=Image.ReadBand(B,rHdr,slImg[I]); //Basis kombinieren
+        for Y:=0 to pred(rHdr.Lin) do
+          for X:=0 to pred(rHdr.Scn) do
+            if not isNan(fxTmp[Y,X]) then
+              fxRes[Y,X]:=fxTmp[Y,X];
+      end
+      else fxRes:=Image.ReadBand(B,rHdr,slImg[I]); //neue Basis
+      if bSet then
+      begin
+        Image.WriteBand(fxRes,iStk,sTrg); //vereinigtes Ergebnis
+        sFrq+='B'+IntToStr(succ(I))+'_'+IntToStr(succ(B))+#10;
+        inc(iStk)
       end;
-    write(#13,IntToStr(slImg.Count-I))
+    end;
   end;
-
-  rHdr.Lat:=round(rFrm.Top/fPix)*fPix; //Frame auf Pixel-Raster normieren
-  rHdr.Lon:=round(rFrm.Lft/fPix)*fPix;
-  Header.Origin(rHdr.Lat,rHdr.Lon,rHdr); //mapinfo-String verändern
-  rHdr.Scn:=iWdt; //neue Parameter
-  rHdr.Lin:=iHgt;
-  rHdr.Stk:=iStk;
-  rHdr.Prd:=iPrd;
-  delete(sBnd,length(sBnd),1); //letztes Zeichen (#10) löschen
-  Header.WriteMulti(rHdr,sBnd,sTrg);
-  Tools.HintOut(true,'Merge.Compile('+IntToStr(I)+'): '+ExtractFileName(sTrg));
+  Delete(sFrq,length(sFrq),1); //Letztes Zeichen (#10) löschen
+  Header.WriteMulti(rHdr.Stk,iStk,rHdr,sFrq,sTrg);
+  Tools.HintOut(true,'Compile.Stack: '+ExtractFileName(sTrg));
 end;
 
-{ "natürliche" Klassen finden = lokale Minima der Dichte im Merkmalsraum
-  - Merkmalsraum rastern (nVoxel)
-    - 1% .. 99% Percentile als Grenzen
-    - Bilder evt. normalisieren
-  - Merkmalsraum (nVoxel) fortlaufend indizieren [1..N]
-  - Bild aus nVoxel-IDs erstellen
-  - lokale Maxima suchen
-    - zufälligen (nicht belegte) nVoxel wählen
-    - Nachbar-nVoxel in allen Dimensionen testen
-    - zunehmende Häufigkeit verfolgen }
+{ aCI extrahiert der String Nr. "iPst" aus "sNme" und vergleicht ihn mit den
+  Vorgaben in "slItm". Die Worte müssen durch Underscores "_" getrennt sein.
+  Die Vorgabe muss zumindest Teil des extrahierten Worts sein. aCI prüft dabei
+  nur den Dateinamen, nicht den Pfad }
 
-procedure tSeparate._FeatureGrid(
-  faLow:tnSgl; //kleinster Wert (Voxel-Mitte) pro Merkmal (Dimension)
-  faHig:tnSgl; //größter Wert (so)
-  iPrt:integer; //Schritte pro Dimension (iaPrt für individuelle Schritte?)
-  sImg:string); //Vorbild
+function tArchive.C_heckItem_(
+  sNme:string; //Datename
+  iPst:integer; //Position des gesuchten Worts (ab Eins)
+  slItm:tStringList): //zulässige Ergebnisse als Liste
+  boolean; //Treffer!
 var
-  faStp:tnSgl=nil; //Werte-Bereich pro Dimension
-  fxImg:tn3Sgl=nil; //Bilddaten
-  iLmt:integer; //höchste ID pro Dimension
-  iVox,iTmp:integer; //Voxel-ID, Zwischenlager
-  ixIdx:tn2Int=nil; //Voxel-Index
+  sPrt:string=''; //mit "iPst" gesuchtes Wort aus "sNme"
+  I:integer;
+begin
+  if (iPst>0) and (slItm.Count>0) then
+  begin
+    Result:=False; //Vorgabe = Übereinstimmung suchen
+    sNme:=ChangeFileExt(ExtractFileName(sNme),''); //Name ohne Extension
+    sPrt:=ExtractWord(iPst,sNme,['_']); //gesuchtes Wort
+    for I:=0 to pred(slItm.Count) do
+      //if pos(sPrt,slItm[I])>0 then //Ausdruck im Wort vorhanden
+      if slItm[I]=sPrt then
+      begin
+        Result:=True;
+        break
+      end;
+  end
+  else Result:=True; //alles akzeptieren
+end;
+
+{ aCP prüft ob das Wort Nr. "iPst" im String "sNme" als Datum interpretiert
+  werden kann und in den Zeitraum von "iLow" bis "iHig" fällt. Die Worte in
+  "sNme" müssen duch Underscores "_" getrennt sein. aCP prüft nur den Datei-
+  Namen ohne den Pfad. }
+
+function tArchive.C_heckPeriod_(
+  sNme:string; //Datename OHNE Pfad!
+  iPst:integer; //Position des gesuchten Worts (ab Eins)
+  iLow:integer; //erstes Datum als Zahl (YYYYMMDD)
+  iHig:integer): //letztes Datum als Zahl (YYYYMMDD)
+  boolean; //Treffer!
+var
+  iDat:integer=0; //Abschnitt als Zahl
+begin
+  if iPst>0 then
+  begin
+    Result:=False;
+    sNme:=ChangeFileExt(ExtractFileName(sNme),''); //Name ohne Extension
+    if TryStrToInt(LeftStr(ExtractWord(iPst,sNme,['_']),8),iDat) then
+      if (iDat>=iLow) and (iDat<=iHig) then
+        Result:=True;
+  end
+  else Result:=True; //alles akzeptieren
+end;
+
+{ aBI kombiniert alle Kanäle aus "slBnd" zu einem Multi-Kanal-Bild in den
+  Grenzen von "sFrm", speichert das Ergenis mit STD-Namen und gibt den Namen
+  zurück. Mit "bQlt" maskiert aBI alle Pixel, die in der Maske den Wert Null
+  haben }
+{ aBI transformiert das CRS von "sFrm" in das CRS der Bilddaten, beschneidet
+  damit das Original und bildet einen Stack aus allen Kanälen in "slBnd". aBI
+  speichert das Ergebnis als "Sensor_Kachel_Kanal_Datum" }
+
+function tArchive.x_BandsImport_(
+  bQlt:boolean; //QA-Maske verwenden
+  sFrm:string; //Auswahl-Rahmen
+  slBnd:tStringList): //selektierte Kanäle
+  string; //Name für Multikanal-Bild
+const
+  cHdr = 'aBI: Quality mask and image bands do not match: ';
+var
+  aIdf:taIdf; //Position der Marker im Original
+  fxBnd:tn2Sgl=nil; //ausgeschnittener Kanal
+  ixMsk:tn2Wrd=nil; //Maske
+  rFrm:trFrm; //Rahmen und Kachel-ID
   rHdr:trHdr; //Metadaten
+  sFrq:string=''; //Kanal-Namen, getrennt durch Zeilenwechsel
   B,X,Y:integer;
 begin
-  Header.Read(rHdr,sImg); //Metadaten
-  fxImg:=Image.Read(rHdr,sImg); //Vorbild
-  ixIdx:=Tools.Init2Integer(rHdr.Lin,rHdr.Scn,0); //Voxel-Index
-  faStp:=Tools.InitSingle(pred(rHdr.Stk),0); //Werte-Bereich pro Dimension
-  for B:=0 to pred(rHdr.Stk) do
-    faStp[B]:=(faHig[B]-faLow[B])/iPrt; //Bereich pro Dimension
-  iLmt:=pred(iPrt);
+  if bQlt
+    then aIdf:=cmLst
+    else aIdf:=cmS2b;
 
-{ TODO: [RECENT] Separate.FeatureGrid prüfen }
+  Result:=eeHme+ShortName(aIdf,slBnd[0]); //Name im Arbeitsverzeichnis
+  rFrm:=Cover.FrameWarp(sFrm,slBnd[0]); //Rahmen in Projektion der Bilddaten
+  if bQlt then
+  begin //Maske mit QA-Information lesen
+    Header.Read(rHdr,eeHme+cfMsk);
+    ixMsk:=Image.ReadWord(rHdr,eeHme+cfMsk)
+  end;
 
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
+  for B:=0 to pred(slBnd.Count) do //alle Kanäle (ohne QA-Kanal)
+  begin //Bild-Kanäle lesen, maskieren und stapeln
+    Gdal.Translate(1,0,1,rFrm,slBnd[B],eeHme+cfImp); //Ausschnitt "rFrm" als "import" speichern
+    if B=0 then Header.Read(rHdr,eeHme+cfImp); //einmal müsste genügen
+    fxBnd:=Image.ReadBand(0,rHdr,eeHme+cfImp);
+    if bQlt then
     begin
-      if isNan(fxImg[0,Y,X]) then continue; //nur definierte Pixel
-      iVox:=0;
-      for B:=0 to pred(rHdr.Stk) do //Kanäle im Vorbild
-      begin
-        iTmp:=trunc((fxImg[B,Y,X]-faLow[B])/faStp[B]); //Index in Dimension "B"  KONTROLLE
-        iTmp:=min(max(trunc((fxImg[B,Y,X]-faLow[B])/faStp[B]),0),iLmt); //Index in Dimension "B"
-        iVox:=iVox*iPrt+iTmp; //neue Position ergänzen
-      end;
-      ixIdx[Y,X]:=succ(iVox) //Null für NoData, ID immer positiv!
+      for Y:=0 to pred(rHdr.Lin) do
+        for X:=0 to pred(rHdr.Scn) do
+          if ixMsk[Y,X]=0 then fxBnd[Y,X]:=NaN;
     end;
-  Image.WriteBand(tn2Sgl(ixIdx),0,eeHme+cfIdx); //Bilddaten schreiben
-  Header.WriteIndex(round(power(iPrt,rHdr.Stk)),rHdr,eeHme+cfIdx);
+    Image.WriteBand(fxBnd,B,Result);
+    sFrq+='B'+IntToStr(succ(B))+#10;
+  end;
+  Delete(sFrq,length(sFrq),1); //Letztes "#10" löschen
+  Header.WriteMulti(slBnd.Count,slBnd.Count,rHdr,sFrq,Result);
+  Tools.HintOut(true,'Compile.Import: '+ExtractFileName(Result));
+end;
+
+{ aBE extrahiert Kanäle aus Archiven und gibt die Namen der Verzeichnisse für
+  die ausgewählten Bilder zurück. Kachel, Datum und Kanäle sind wählbar. Mit
+  "bQlt" wird der landsat-QA-Kanal ergänzt }
+{ aBE übernimmt in "sArc" einen Suchstring für alle Archive und reduziert diese
+  Liste mit "sFrq", sPrd" und "sTls" für Kanal-ID, Zeitperiode und Kachel-ID.
+  Kachel- und Kanal-ID können als CSV-Liste übergeben werden, das Datum muss
+  als Periode im Format YYYYMMDD-YYYYMMDD übergeben werden. }
+{ aBE erzeugt zunächst eine Liste aller Archive die zur Eingabe-Maske "sArc"
+  passen und reduziert sie mit "sPrd" und "sTls". Im zweiten Schritt erzeugt
+  aBE in "slBnd" ein Inhaltsverzeichnis der Archivs, wählt daraus alle Kanäle,
+  die zu "sTls" passen und extrahiert die gewählten Kanäle in Verzeichnisse mit
+  einem verkürzten Namen des Archivs }
+
+// wahlweise Archive extrahieren ODER Kanäle kopieren, beide selektiv
+
+function tArchive.x_Select_(
+  bQlt:boolean; //QA-Layer integrieren
+  sArc:string; //Filter für Archiv-Namen
+  sFrq:string; //zulässige Kanal-Namen als CSV.
+  sPrd:string; //Zeitperiode als "YYYYMMDD-YYYYMMDD"
+  sTls:string): //zulässige Kachel-IDs als CSV.
+  tStringList; //Namen der gewählten Archive
+const
+  cBnd='aBE: Band names not found: ';
+  cDat='aBE: Image Archives not found at: ';
+  cPrd='aBE: Date input [YYYYMMDD-YYYYMMDD] not defined: ';
+  cPst='aBE: Sensor type not detected!';
+var
+  bArc:boolean; //Archiv extrahieren <> Kanäle kopieren
+  aIdf:taIdf; //Positionen der Identifier (Sensor - Kachel - Frequenz - Datum)
+  iHig,iLow:integer; //Datum bis|von als YYYYMMDD
+  slBnd:tStringList=nil; //Liste mit passenden Kanal-Namen
+  slFrq:tStringList=nil; //zulässige Kanal-Namen (IDs des Providers)
+  slTle:tStringList=nil; //zulässige Kachel-Namen (IDs des Providers)
+  A,B:integer;
+  qA:string;
+begin
+  bArc:=ExtractFileExt(sArc)='.tar';
+  if bArc
+    then Result:=Tools.FileFilter(sArc) //Archiv-Namen Vorauswahl
+    else Result:=Tools._DirectoryFilter_(sArc); //Verzeichnisse Vorauswahl
+  if Result.Count<1 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+
+  if (TryStrToInt(LeftStr(sPrd,8),iLow)=False) //erstes Datum
+  or (TryStrToInt(RightStr(sPrd,8),iHig)=False) then //letztes Datum
+    Tools.ErrorOut(3,cPrd+sPrd);
+
+  try
+    slFrq:=tStringList.Create;
+    if bQlt and (sFrq<>'') then sFrq+=', PIXEL'; //QA-Maske ergänzen
+    slFrq.CommaText:=sFrq; //gewählte Kanal-Namen als Liste
+    slTle:=tStringList.Create;
+    slTle.CommaText:=sTls; //gewählte Kachel-IDs als Liste
+
+    if bArc
+      then aIdf:=cmLst //Landsat
+      else aIdf:=cmS2b; //Sentinel-2
+
+    for A:=pred(Result.Count) downto 0 do
+      if (CheckItem(Result[A],aIdf[1],slTle)=False) //passende Kachel?
+      or (CheckPeriod(Result[A],aIdf[3],iLow,iHig)=False) then //passendes Datum?
+        Result.Delete(A); //Verzeichnis aus Liste entfernen
+    if Result.Count=0 then Tools.ErrorOut(3,cDat+sArc); //leere Liste
+
+    for A:=0 to pred(Result.Count) do
+    begin
+      qA:=Result[A];
+      if bArc
+        then slBnd:=TarContent(Result[A],nil) //Kanäle im Archiv ohne Pfadnamen
+        else slBnd:=Tools.FileFilter(Result[A]+'*'); //Kanäle im Verzeichnis ohne Pfadnamen
+      for B:=pred(slBnd.Count) downto 0 do
+        if CheckItem(slBnd[B],aIdf[2],slFrq)=False then
+          slBnd.Delete(B); //Kanal aus Liste löschen
+      if slBnd.Count=0 then Tools.ErrorOut(3,cBnd+slFrq.CommaText); //leere Liste
+      if bArc
+        then Result[A]:=_TarExtract(Result[A],slBnd) //Namen in "slBnd" extrahieren
+        else Result[A]:=Tools._ImportList(Result[A],slBnd); //Verzeichnis im Home
+    end;
+  finally
+    slBnd.Free;
+    slFrq.Free;
+    slTle.Free;
+  end;
+end;
+
+{ aQI bestimmt den Anteil klarer Pixel im QA-Layer aus dem Verzeichnis "sDir",
+  speichert den Layer als [0,1]-Maske "mask" und gibt die Namen aller anderen
+  Layer im Verzeichnis "sDir" zurück. Dabei verwendet aQI nur den Ausschnitt
+  "sFrm". Wenn der QA-Layer weniger als 50% klare Pixel enthält, ist die Namen-
+  Liste leer }
+{ aQI erzeugt mit "sFrm" einen Ausschnitt aus dem QA-Layer und transformiert
+  den Binär-Code für Wolken, Schatten und Cirren in eine [0,1]-Maske. aQI zählt
+  die klaren Pixel. Die Maske muss mindestens 1000 Pixel und 50% Abdeckung für
+  echte Pixel haben. aQI speichert akzeptierte Masken als "mask" und gibt die
+  Namen der übrigen Layer aus dem Verzeichnis "sDir" nur dann zurück, wenn die
+  Maske akzeptiert ist }
+
+function tArchive.x_QualityMask_(
+  sFrm:string; //Rahmen mit Kachel-ID
+  sDir:string): //Verzeichnisse mit extrahierten Bildern
+  tStringList; //Masken-Layer gebildet
+const
+  cCld = $300; //2⁸+2⁹ = Clouds (768)
+  cSdw = $C00; //2¹⁰+2¹¹ = Shadow (3072)
+  cIce = $3000; //2¹²+2¹³ = Ice, Snow (12288)
+  cCir = $C000; //2¹⁴+2¹⁵ = Cirrus (49152)
+var
+  iClr:integer=0; //Anzahl klare Pixel in der Maske
+  iCnt:integer=0; //Anzahl definierte Pixel in der Maske
+  iQlt:integer=0; //Anteil klarer Pixel als promille
+  ixBin:tn2Wrd=nil; //QA-Kanal, Ausschnitt "rFrm"
+  rFrm:trFrm; //Auswahl-Rahmen aus Eingabe
+  rHdr:trHdr; //Metadaten Vorbild
+  R,X,Y:integer;
+begin
+  //slDir.Count>in Parse.Import
+  Result:=Tools.FileFilter(Tools.SetDirectory(sDir)+'*'); //alle Dateien im Verzeichnis
+  Result.Sort; //Kanäle ordnen
+  for R:=0 to pred(Result.Count) do
+    if RightStr(Result[R],13)='_QA_PIXEL.TIF' then //nur Landsat QA-Kanäle
+    begin
+      rFrm:=Cover.FrameWarp(sFrm,Result[R]); //Rahmen in Projektion der Bilddaten
+      Gdal.Translate(0,0,1,rFrm,Result[R],eeHme+cfMsk); //Ausschnitt "rFrm" im ENVI-Format
+      Header.Read(rHdr,eeHme+cfMsk); //Metadaten
+      ixBin:=Image.ReadWord(rHdr,eeHme+cfMsk); //QA-Layer als 16-Bit-Integer Ausschnitt "rFrm"
+      Result.Delete(R); //Maske nicht übergeben
+
+      iClr:=0; iCnt:=0; //neu zählen
+      for Y:=0 to high(ixBin) do
+        for X:=0 to high(ixBin[0]) do
+          if ixBin[Y,X]>1 then //definierter Bildbereich
+          begin
+            inc(iCnt); //Summe definierte Pixel
+            if (ixBin[Y,X] and cCld=cCld) //binäre Marker für Wolken und Schatten
+            or (ixBin[Y,X] and cSdw=cSdw)
+            or (ixBin[Y,X] and cCir=cCir) then //Bildstörung
+              ixBin[Y,X]:=0 //Pixel maskieren
+            else ixBin[Y,X]:=1; //Pixel übernehmen
+          end
+          else ixBin[Y,X]:=0;
+
+      if iClr>1000 //mindestens 1000 Pixel
+        //iQlt:=iClr*1000 div iCnt; //rundet ab
+        then iQlt:=round(iClr/iCnt*1000) //Anteil klare Pixel als Promille
+        else iQlt:=0; //keine güligen Pixel
+      if iQlt>500 then //mindestens 50% Abdeckung
+        Image.WriteWord(ixBin,eeHme+cfMsk) //"Gdal.Import" überschreiben, Header bleibt gültig
+      else Result.Clear; //leere Liste übergeben
+      //Result.Objects[R]:=tObject(pointer(iQlt)); //QA-Layer & Quality-ID listen
+      Tools.HintOut(true,'Compile.Quality: '+ExtractFileName(sDir));
+    break; //nur ein Kanal
+  end;
+end;
+
+{ aTE extrahiert die Dateien "slNme" aus dem Archiv "sArc" mit dem OS-Befehl
+  "tar". Die extrahierten Dateien werden von "tar" im aktuellen Arbeits-
+  Verzeichnis gespeichert. }
+{ ES GIBT "CPIO" FÜR ARCHIVIERTE DATEIEN }
+
+procedure tArchive.T_arExtract_(
+  sArc:string; //Archiv-Name
+  slNme:tStringList); //gewählte Namen im Archiv
+const
+  cCmd = 'tar';
+var
+  slPrm:tStringList=nil; //Parameter für "tar"-Befehl
+begin
+  SetCurrentDir(eeHme); //Arbeitsverzeichnis als Ziel
+  if (slNme<>nil) and (slNme.Count>0) then
+  try
+    slPrm:=tStringList.Create;
+    slPrm.Add('-x'); //liste erzeugen
+    slPrm.Add('-f'); //Archiv-Name
+    slPrm.Add(sArc); //Archiv-Name
+    slPrm.AddStrings(slNme); //gefilterte Namen
+    Tools.OsExecute(cCmd,slPrm); //gefilterte Namen extrahieren
+    Tools.ErrorLog('aTE:'); //tar-Fehlermeldungen
+  finally
+    slPrm.Free;
+  end;
+end;
+
+{ aGP übergibt die Position der Abschnitte für Sensor, Kachel, Frequenz und
+  Datum im Dateinamen. Die Abschnitte müssen durch Underscores "_" getrennt
+  sein. Andere Abschnitte können dazwischen liegen. }
+
+function tArchive.G_etWordCount(sNme:string):tpIdf;
+begin
+  Result:=@cmImd; //Vorgabe = Abschnitte Imalys-Intern
+  if ExtractFileExt(sNme)='.jp2' then Result:=@cmS2b; //Sentinel-Kanäle (kein anderer Indikator)
+  sNme:=ChangeFileExt(ExtractFileName(sNme),''); //Name ohne Extension
+  if copy(sNme,6,4)='L2SP' then Result:=@cmLst else //Landsat-Archiv
+  if copy(sNme,5,6)='MSIL2A' then Result:=@cmS2a; //Sentinel-2-Archiv
 end;
 

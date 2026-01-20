@@ -22,32 +22,31 @@ uses
 type
   tAlphaMask = function(var rHdr:trHdr; sNme:string):tn2Sgl; //für Header
 
-  tFilter = class(tObject) //Aufruf geprüft 22-11-17
+  tFilter = class(tObject) //checked 251121
     private
       function Circle(iRds:integer):tnPnt;
-      function Combination(fxBnd:tn2Sgl; iBtm,iRgt,iRds:integer):single;
-      function Deviation(fxBnd:tn2Sgl; iBtm,iRgt,iRds:integer):single;
       function _Distance_(fLmt:single; fxBnd:tn2Sgl):tn2Sgl;
       procedure _DistanceOut_(fLmt:single; sImg:string);
+      function _Diversity(fxBnd:tn2Sgl; iRds:integer):tn2Sgl;
       function Laplace(fxBnd:tn2Sgl; iRds:integer):tn2Sgl;
       function LowPass(fxBnd:tn2Sgl; iRds:integer):tn2Sgl;
       function _ParseBand_(sLin:string):integer;
       function _ParseValue_(sLin:string):single;
       function _ParseMLT_(sNme:string):tn2Sgl;
+      function RandomValues(fxBnd:tn2Sgl; iSmp:integer):tnSgl;
       function _RaosDiv_(iCnt,iRds:integer; ixThm:tn2Byt):tn2Sgl;
-      function Roughness(fxBnd:tn2Sgl; iRds,iTyp:integer):tn2Sgl;
       function Texture(fxBnd:tn2Sgl; sExc:string):tn2Sgl;
     public
-      procedure Calibrate(faFct:tnSgl; fOfs,fNod:single; sImg:string);
       procedure Hillshade(sDem:string);
-      function Normalize(iSmp:integer; sImg:string):string;
-      procedure ReplaceNan(fNan:single; fxVal:tn2Sgl);
-      procedure SetNoData(fNan:single; sImg:string);
-      procedure ValueMove(fMve:single; fxImg:tn2Sgl);
+      function _InvertAttribute_(iAtr:integer):tnSgl;
+      procedure MoveValue(fMve:single; fxImg:tn2Sgl);
+      procedure xBandsCalibrate(fNod:single; sFct,sOfs,sRes:string);
+      function xEqualImages(fPrc:single; iSmp:integer; sImg:string):string;
       procedure xKernel(iRds:integer; sExc,sImg,sTrg:string);
+      procedure xSetNoData(fNan:single; sImg:string);
   end;
 
-  tHeader = class(tObject) //Aufruf geprüft 22-11-17
+  tHeader = class(tObject) //checked 241116
     private
       procedure BandNamesAdd(var rHdr:trHdr; slHdr:tStringList);
       function ClassNames(var rHdr:trHdr):string;
@@ -62,37 +61,33 @@ type
       procedure WriteCover(rFrm:trFrm; var rHdr:trHdr; sImg:string);
     public
       procedure AddLine(sCde,sNew,sImg:string);
-      function BandCompare(var rHdr:trHdr; sImg:string):boolean;
+      function BandCompare(var rHdr:trHdr; sImg:string):integer;
+      procedure BandNames(sBnd,sTrg:string);
       procedure CopyRecord(const rHdr:trHdr; var rRdh:trHdr);
       procedure Origin(fLat,fLon:double; var rHdr:trHdr);
       procedure Read(var rHdr:trHdr; sImg:string);
-      function ReadLine(sCde,sImg:string):string;
+      function ReadLine(bErr:boolean; sCde,sImg:string):string;
       procedure Write(var rHdr:trHdr; sHnt,sNme:string);
       procedure WriteIndex(iCnt:integer; var rHdr:trHdr; sImg:string);
-      procedure WriteMulti(var rHdr:trHdr; sBnd,sImg:string);
+      procedure WriteMulti(iPrd,iStk:integer; var rHdr:trHdr; sBnd,sImg:string);
       procedure WriteScalar(var rHdr:trHdr; sImg:string);
       procedure WriteThema(iCnt:integer; var rHdr:trHdr; sFld,sRes:string);
-      //checked 241116
   end;
 
-  tImage = class(tObject) //Aufruf geprüft 22-11-17
+  tImage = class(tObject) //checked 251123
     private
     public
-      procedure AlphaMask(sImg:string);
+      function AlphaMask(sImg:string):integer;
       function HSV(sImg:string):tn3Sgl;
       function Read(const rHdr:trHdr; sNme:string):Tn3Sgl;
       function ReadBand(iBnd:integer; var rHdr:trHdr; sNme:string):Tn2Sgl;
       function ReadThema(const rHdr:trHdr; sNme:string):Tn2Byt;
       function ReadWord(const rHdr:trHdr; sNme:string):Tn2Wrd;
-      function SkipMask(sImg:string):Tn2Byt;
-      function StackBands(slBnd:tStringList; sMsk:string):string;
-      procedure StackImages(slImg:tStringList; sTrg:string);
+      procedure xStackImages(sArt,sTrg:string; slImg:tStringList);
       procedure WriteBand(fxImg:tn2Sgl; iBnd:integer; sImg:string);
       procedure WriteMulti(fxImg:tn3Sgl; sImg:string);
       procedure WriteThema(ixImg:tn2Byt; sRes:string);
       procedure WriteWord(ixMsk:tn2Wrd; sRes:string);
-      procedure WriteZero(iCol,iRow:integer; sRes:string);
-      //checked 241116
   end;
 
 var
@@ -103,7 +98,28 @@ var
 implementation
 
 uses
-  mutual, thema, vector;
+  index, mutual, thema, vector;
+
+{ fIV invertiert alle Werte des Zonen-Attributs "iAtr" und gibt den höchsten
+  Wert als Result[0] zurück. fIV ignoriert NoData. Alle Werte im Ergebnis sind
+  positiv }
+
+function tFilter._InvertAttribute_(
+  iAtr:integer): //Zonen Attribut-ID
+  tnSgl; //Attribut-Werte
+const
+  cNil = 'fIV: Zone features not found!';
+var
+  fMax:single=1-MaxSingle; //Vorgabe = sehr niedrig
+  Z:integer;
+begin
+  Result:=Tools.BitExtract(iAtr,eeHme+cfAtr);
+  fMax:=MaxValue(Result); //höchster Wert
+  for Z:=1 to high(Result) do
+    if not isNan(Result[Z]) then
+      Result[Z]:=fMax-Result[Z]; //Werte invertieren, Max => Null
+  Result[0]:=fMax; //höchster Wert
+end;
 
 function tHeader._MapInfo_(
   fLat,fLon:double; //Koordinaten für linke obere Ecke
@@ -135,24 +151,23 @@ function tImage.ReadBand(
   sNme: string): //Bildname
   Tn2Sgl; //Pixelraster
 const
-  cRst = 'rIFR: 4-Bit-Values (integer, single, longword) required: ';
+  cBnd = 'iRB: The band-ID must be positive or zero!: ';
+  cRst = 'iRB: 4-Bit-Values (integer, single, longword) required: ';
 var
   hImg: integer=-1; //Filehandle "Bild"
   iSze: integer; //Byte pro Bildzeile
   Y: integer; //Bildzeilen-ID
 begin
   Result:=nil;
-  if not rHdr.Fmt in [3,4,13] then Tools.ErrorOut(2,cRst+sNme);
+  if iBnd<0 then Tools.ErrorOut(3,cBnd+IntToStr(iBnd));
+  if not rHdr.Fmt in [3,4,13] then Tools.ErrorOut(3,cRst+sNme);
   Result:=Tools.Init2Single(rHdr.Lin,rHdr.Scn,0); //Pixelraster Ergebnis
   try
     hImg:=Tools.CheckOpen(ChangeFileExt(sNme,''),fmOpenRead); //Bilddaten
     iSze:=rHdr.Scn*SizeOf(single); //Byte pro Bildzeile
     FileSeek(hImg,iBnd*rHdr.Lin*rHdr.Scn*SizeOf(single),0); //Offset
     for Y:=0 to pred(rHdr.Lin) do
-    begin
       FileRead(hImg,Result[Y,0],iSze); //Zeile lesen
-      if Y and $FFF=$FFF then write(#13+IntToStr((rHdr.Lin-Y) div $FFF))
-    end;
   finally
     if hImg>=0 then FileClose(hImg);
   end; //try ..
@@ -171,9 +186,9 @@ var
   I: integer;
 begin
   Result:='';
-  if rHdr.Fmt<>1 then Tools.ErrorOut(2,cFmt);
-  if rHdr.Cnt<1 then Tools.ErrorOut(2,cCnt);
-  if length(rHdr.Pal)<1 then Tools.ErrorOut(2,cPal);
+  if rHdr.Fmt<>1 then Tools.ErrorOut(3,cFmt);
+  if rHdr.Cnt<1 then Tools.ErrorOut(3,cCnt);
+  if length(rHdr.Pal)<1 then Tools.ErrorOut(3,cPal);
   Result:='0, 0, 0';
   for I:=1 to rHdr.Cnt do
     Result:=Result+', '+
@@ -182,11 +197,12 @@ begin
       IntToStr((rHdr.Pal[I] and $FF0000) shr 16);
 end;
 
+{ tHBN schreibt alle Kanal-Namen als Liste aus einzelnen Zeilen. Strings können
+  häufig nur $FFF Zeichen aufnehmen! }
+
 procedure tHeader.BandNamesAdd(
   var rHdr: trHdr; //Header als Record
   slHdr: tStringList); //Header als Text
-{ tHBN schreibt alle Kanal-Namen als Liste aus einzelnen Zeilen. Strings können
-  häufig nur $FFF Zeichen aufnehmen! }
 const
   cSpc = #32#32; //Einrückung
 var
@@ -228,11 +244,13 @@ begin
     slHdr.Add('samples = '+IntToStr(rHdr.Scn));
     slHdr.Add('lines = '+IntToStr(rHdr.Lin));
     slHdr.Add('bands = '+IntToStr(rHdr.Stk));
-    slHdr.Add('period = '+IntToStr(rHdr.Prd));
+    slHdr.Add('period = '+IntToStr(min(rHdr.Prd,rHdr.Stk)));
+    slHdr.Add('quality = {'+rHdr.aCvr+'}');
     slHdr.Add('header offset = 0');
     slHdr.Add('file type = '+FileType(rHdr));
     slHdr.Add('data type = '+IntToStr(rHdr.Fmt));
     slHdr.Add('interleave = bsq');
+    slHdr.Add('data ignore value = '+FloatToStr(rHdr.Nod));
     if (rHdr.Cnt>0) and (rHdr.Fmt=1) then
     begin
       slHdr.Add('classes = '+IntToStr(succ(rHdr.Cnt)));
@@ -288,70 +306,46 @@ var
   B,Y: integer; //Pixelindex
 begin
   Result:=nil;
-  if cfByt[rHdr.Fmt]<>4 then Tools.ErrorOut(2,cRst+sNme);
+  if cfByt[rHdr.Fmt]<>4 then Tools.ErrorOut(3,cRst+sNme);
   Result:=Tools.Init3Single(rHdr.Stk,rHdr.Lin,rHdr.Scn,0); //Pixelraster Ergebnis
   try
     hImg:=Tools.CheckOpen(ChangeFileExt(sNme,''),fmOpenRead); //Bilddaten
     iSze:=rHdr.Scn*SizeOf(single); //Byte pro Bildzeile
     for B:=0 to pred(rHdr.Stk) do
       for Y:=0 to pred(rHdr.Lin) do
-      begin
         FileRead(hImg,Result[B,Y,0],iSze); //Zeile lesen
-        if Y and $FFF=$FFF then write(#13+IntToStr((rHdr.Lin-Y) div $FFF))
-      end;
   finally
     if hImg>=0 then FileClose(hImg);
   end; //try ..
-end;
-
-{ hRL sucht im Header von "sImg" nach dem Codewort "sCde" und gibt den
-  entsprechenden Eintrag zurück }
-
-function tHeader.ReadLine(
-  sCde: string; //Bezeichner
-  sImg: string): //Bildname
-  string; //Werte ohne Code, evt CSL-String
-const
-  cCde = 'hRL: Item not found: ';
-  cImg = 'hRL: File not found: ';
-var
-  slHdr: tStringList=nil; //ENVI-Header Zeilen
-  I: integer;
-begin
-  Result:='';
-  if not FileExists(sImg) then Tools.ErrorOut(2,cImg+sImg);
-  try
-    slHdr:=tStringList.Create;
-    slHdr.LoadFromFile(ChangeFileExt(sImg,cfHdr)); //Header-Vorbild
-    for I:=1 to pred(slHdr.Count) do
-      if LeftStr(slHdr[I],length(sCde))=sCde then
-      begin
-        Result:=trim(copy(slHdr[I],succ(pos('=',slHdr[I])),$FFF));
-        if Result[1]='{' then delete(Result,1,1); //Klammer entfernen
-        if Result[length(Result)]='}' then delete(Result,length(Result),1); //Klammer entfernen
-        break; //nur erstes Ergebnis
-      end;
-  finally
-    slHdr.Free;
-  end;
-  if Result='' then Tools.ErrorOut(2,cCde+sCde);
 end;
 
 { tWM erzeugt Metadaten für alle Kanäle in "sBnd" und speichert sie als
   "sImg.hdr". }
 
 procedure tHeader.WriteMulti(
+  iPrd,iStk:integer; //Perioden, Kanäle
   var rHdr:trHdr; //Metadaten Vorbild
-  sBnd:string; //Kanal-Namen, String mit Zeilentrennern
+  sBnd:string; //Kanal-Namen getrennt durch #10 ODER leer für Vorgabe
   sImg:string); //Bild-Name
+var
+  B:integer;
 begin
   rHdr.Cnt:=0; //Scalar
   rHdr.Fmt:=4; //Single-Format
-  rHdr.aBnd:=copy(sBnd,1,length(sBnd)); //echte Kopie
-  rHdr.Stk:=WordCount(sBnd,[#10]);
-  rHdr.Prd:=min(rHdr.Prd,rHdr.Stk); //anpassen
+  rHdr.Stk:=iStk; //neue Kanäle
+  rHdr.Prd:=iPrd; //neue Periode
   rHdr.Fld:=''; //keine Attribute
   SetLength(rHdr.Pal,0); //keine Palette
+  if length(sBnd)=0 then
+  begin
+    rHdr.aBnd:='B1-1';
+    {for B:=1 to pred(iStk) do
+      rHdr.aBnd+=#10+char(66+(B div iPrd))+IntToStr(succ(B mod iPrd));}
+    for B:=1 to pred(iStk) do
+      with rHdr do aBnd+=#10+'B'+IntToStr(succ(B div Prd))+'-'+
+        IntToStr(succ(B mod Prd));
+  end
+  else rHdr.aBnd:=sBnd; //Vorgabe unverändert übernehmen
   Write(rHdr,ExtractFileName(sImg),sImg); //Header schreiben
 end;
 
@@ -372,14 +366,14 @@ var
   slHdr: tStringList=nil; //nimmt Header auf
   I: integer;
 begin
-  if not FileExists(ChangeFileExt(sImg,cfHdr)) then Tools.ErrorOut(2,cHdr+sImg);
+  if not FileExists(ChangeFileExt(sImg,cfHdr)) then Tools.ErrorOut(3,cHdr+sImg);
   SetLength(rHdr.Pal,0); //Palette entfernen
   rHdr:=crHdr; //Vorgabe
   try
     slHdr:=tStringList.Create;
     slHdr.LoadFromFile(ChangeFileExt(sImg,cfHdr)); //Header-Vorbild
     if slHdr[0]<>'ENVI' then
-      Tools.ErrorOut(2,cEnv+ChangeFileExt(sImg,cfHdr));
+      Tools.ErrorOut(3,cEnv+ChangeFileExt(sImg,cfHdr));
     for I:=1 to pred(slHdr.Count) do //Alles außer Überschrift
     begin
       if pos('=',slHdr[I])>0 then
@@ -399,6 +393,8 @@ begin
       if sCde='lines' then rHdr.Lin:=StrToInt(sVal) else
       if sCde='bands' then rHdr.Stk:=StrToInt(sVal) else
       if sCde='period' then rHdr.Prd:=StrToInt(sVal) else
+      if sCde='data ignore value' then rHdr.Nod:=StrToFloat(sVal) else
+      if sCde='quality' then rHdr.aCvr:=sVal else
       if sCde='data type' then rHdr.Fmt:=StrToInt(sVal) else
       if sCde='classes' then rHdr.Cnt:=StrToInt(sVal);
       if sCde='class lookup' then rHdr.Pal:=PalCode(sVal);
@@ -416,15 +412,15 @@ begin
       fPix:=StrToFloat(ExtractDelimited(7,rHdr.Map,[',']));
       rHdr.Pix:=StrToFloat(ExtractDelimited(6,rHdr.Map,[',']));
       if (rHdr.Pix-fPix)/(rHdr.Pix+fPix)>1/10000 then
-        Tools.ErrorOut(2,cPix);
+        Tools.ErrorOut(3,cPix);
       rHdr.Lat:=StrToFloat(ExtractDelimited(5,rHdr.Map,[',']));
       rHdr.Lon:=StrToFloat(ExtractDelimited(4,rHdr.Map,[',']));
     end;
     if length(rHdr.aBnd)<1 then
     begin
-      rHdr.aBnd:='band_1';
+      rHdr.aBnd:='B-1';
       for I:=2 to rHdr.Stk do
-        rHdr.aBnd+=#10+'band_'+IntToStr(I); //neutrale Kanal-Namen
+        rHdr.aBnd+=#10+'B-'+IntToStr(I); //neutrale Kanal-Namen
     end;
     if rHdr.Prd<1 then rHdr.Prd:=rHdr.Stk;
   finally
@@ -489,7 +485,7 @@ var
   "iExc=2" ist die Differenz normalisiert. lSD gibt für Kontakte zu NoData
   Null zurück. }
 
-function _lSqrDiff(const fNbr,fVal:single):single; //quadrierte Differenz
+function lSqrDiff(const fNbr,fVal:single):single; //quadrierte Differenz
 begin
   if isNan(fNbr) then
     Result:=0 //Kontakt zu NoData verändert Summe nicht
@@ -514,10 +510,10 @@ begin
       if isNan(fxBnd[Y,X]) then continue;
       fBnd:=fxBnd[Y,X];
       fRes:=0;
-      if X>0 then fRes+=_lSqrDiff(fxBnd[Y,pred(X)],fBnd);
-      if Y>0 then fRes+=_lSqrDiff(fxBnd[pred(Y),X],fBnd);
-      if X<high(fxBnd[0]) then fRes+=_lSqrDiff(fxBnd[Y,succ(X)],fBnd);
-      if Y<high(fxBnd) then fRes+=_lSqrDiff(fxBnd[succ(Y),X],fBnd);
+      if X>0 then fRes+=lSqrDiff(fxBnd[Y,pred(X)],fBnd);
+      if Y>0 then fRes+=lSqrDiff(fxBnd[pred(Y),X],fBnd);
+      if X<high(fxBnd[0]) then fRes+=lSqrDiff(fxBnd[Y,succ(X)],fBnd);
+      if Y<high(fxBnd) then fRes+=lSqrDiff(fxBnd[succ(Y),X],fBnd);
       if iExc<>1 then
         Result[Y,X]:=sqrt(fRes) //geometrisches Mittel
       else if fRes>0 then
@@ -591,7 +587,7 @@ begin
   //iRds>0!
   Result:=Tools.Init2Single(length(ixThm),length(ixThm[0]),0); //leeres Ergebnis
   iaAbd:=Tools.InitInteger(succ(iCnt),0); //Klassen-Häufigkeit im Kernel
-  fxDst:=Model.FeatureDist; //Distanzen zwischen Klassen-Merkmalen
+  fxDst:=Model._FeatureDist_; //Distanzen zwischen Klassen-Merkmalen
   for Y:=iRds to high(ixThm)-iRds do
   begin
     for X:=iRds to high(ixThm[0])-iRds do
@@ -612,9 +608,7 @@ begin
             fRes+=iaAbd[I]*iaAbd[K]/iaAbd[0]*fxDst[I,K];
       Result[Y,X]:=fRes; //alle Kombinationen
     end;
-    if Y and $FF=$FF then write('.');
   end;
-  write(#13); //carriage return
 end;
 
 { iRB liest den Kanal "iBnd" im Bild "rImg" und gibt ihn als Array[Lat,Long]
@@ -632,8 +626,8 @@ var
   Y: integer; //Bildzeilen-ID
 begin
   Result:=nil;
-  if rHdr.Fmt<>1 then Tools.ErrorOut(2,cRst+sNme);
-  if rHdr.Stk>1 then Tools.ErrorOut(2,cStk+sNme);
+  if rHdr.Fmt<>1 then Tools.ErrorOut(3,cRst+sNme);
+  if rHdr.Stk>1 then Tools.ErrorOut(3,cStk+sNme);
   Result:=Tools.Init2Byte(rHdr.Lin,rHdr.Scn); //Pixelraster Ergebnis
   try
     hImg:=Tools.CheckOpen(ChangeFileExt(sNme,''),fmOpenRead); //Bilddaten
@@ -645,25 +639,18 @@ begin
 end;
 
 { hWS erzeugt Metadaten für einen Kanal im Single-Format und speichert ihn als
-  "sImg.hdr". hWS schreibt den Kanal-Namen als Prozess+Datum. }
+  "sImg.hdr". hWS übernimmt den Prozess-Namen als Ergebnis und als Kanal-Name }
 
 procedure tHeader.WriteScalar(
   var rHdr:trHdr; //Metadaten Vorbild
   sImg:string); //Ergebnis-Name
-var
-  iDat:integer; //für Test
-  sDat:string; //Datum [YYYYMMDD] oder leer
 begin
   rHdr.Cnt:=0; //Scalar
   rHdr.Fmt:=4; //Single-Format
   rHdr.Stk:=1; //ein Kanal
   rHdr.Prd:=1; //ein Kanal
   rHdr.Fld:=''; //keine Attribute
-
-  sDat:=RightStr(rHdr.aBnd,8); //Datum für Kanal-Namen
-  if TryStrToInt(sDat,iDat)
-    then rHdr.aBnd:=ExtractFileName(sImg)+'_'+sDat //Prozess+Datum
-    else rHdr.aBnd:=ExtractFileName(sImg); //nur Prozess
+  rHdr.aBnd:=ExtractFileName(sImg); //Prozess-Name
   SetLength(rHdr.Pal,0); //keine Palette
   Write(rHdr,rHdr.aBnd,sImg); //Header schreiben
 end;
@@ -754,43 +741,31 @@ begin
   fxRes:=_Distance_(fLmt,Image.ReadBand(0,rHdr,sImg));
   Image.WriteBand(fxRes,0,eeHme+cfDst); //Bilddaten
   Header.WriteScalar(rHdr,eeHme+cfDst); //Metadaten
-  Tools.HintOut(true,'Filter.Distance: '+cfDst);
+  Tools.HintOut(true,'DistanceOut: '+cfDst);
 end;
 
-procedure tFilter.ValueMove(
+{ tFVM verschiebt alle Werte im Bild "fxImg" um den Wert von "fMve" }
+
+procedure tFilter.MoveValue(
   fMve:single; // Summand
   fxImg:tn2Sgl); //Vorbild
-{ tFVM verschiebt alle Werte im Bild "fxImg" um den Wert von "fMve" }
 const
   cNil = 'fVM: Image data not defined!';
 var
   X,Y:integer;
 begin
-  if fxImg=nil then Tools.ErrorOut(2,cNil);
+  if fxImg=nil then Tools.ErrorOut(3,cNil);
   for Y:=0 to high(fxImg) do
     for X:=0 to high(fxImg[0]) do
       if not IsNan(fxImg[Y,X]) then
         fxImg[Y,X]+=fMve;
 end;
 
-procedure tFilter.ReplaceNan(
-  fNan:single; // Wert für NoData
-  fxVal:tn2Sgl); //Vorbild
-{ tFVM verschiebt alle Werte im Bild "fxImg" um den Wert von "fMve" }
-var
-  X,Y:integer;
-begin
-  for Y:=0 to high(fxVal) do
-    for X:=0 to high(fxVal[0]) do
-      if IsNan(fxVal[Y,X]) then
-        fxVal[Y,X]:=fNan;
-end;
-
 { iWT speichert den Kanal "ixImg" als Klassen-Bild (Byte) im IDL-Format. }
 
 procedure tImage.WriteThema(
-  ixImg:tn2Byt;
-  sRes:string); //Ergebnis
+  ixImg:tn2Byt; //Klassen-Bild als Matrix
+  sRes:string); //Name im Arbeitsverzeichnis
 var
   hRes: integer=-1; //Filehandle "Bild"
   iSze: integer; //Byte pro Bildzeile
@@ -820,7 +795,7 @@ var
   Y: integer; //Bildzeilen-ID
 begin
   Result:=nil;
-  if not rHdr.Fmt in [2,12] then Tools.ErrorOut(2,cRst+sNme);
+  if not rHdr.Fmt in [2,12] then Tools.ErrorOut(3,cRst+sNme);
   Result:=Tools.Init2Word(rHdr.Lin,rHdr.Scn); //Pixelraster Ergebnis
   try
     hImg:=Tools.CheckOpen(ChangeFileExt(sNme,''),fmOpenRead); //Bilddaten
@@ -853,39 +828,23 @@ begin
         Result[Y,X]:=Result[Y,X]-fxTmp[Y,X]; //Differenz Klein-Groß
 end;
 
+{ hBC prüft, ob das Bild "sImg" genauso groß ist wie "rHdr". Dazu vergleicht
+  hBC Anzahl und Größe der Pixel sowie das Pixel-Format.
+==> hBC IGNORIERT DAS KOORDINATENSYSTEM }
+
 function tHeader.BandCompare(
-  var rHdr:trHdr; //Referenz
-  sImg:string): //zweiter Header oder Bild
-  boolean; //Null-Eins für Fehler-Passend
-{ hCp prüft, ob das Bild "sImg" genauso groß ist wie "rHdr". Dazu vergleicht
-  hCp Anzahl und Größe der Pixel sowie das Pixel-Format. }
-{ hCp IGNORIERT DAS KOORDINATENSYSTEM }
+  var rHdr:trHdr; //Metadaten-Referenz
+  sImg:string): //Vergleichs-Bild
+  integer; //0=identisch; 1=Format unterschiedlich; 2=Projektion unterschiedlich
 var
   rRdh:trHdr; //zweiter header
 begin
-  Result:=False; //Vorgabe=Fehler
+  Result:=2; //Vorgabe=Fehler
   Header.Read(rRdh,sImg);
-  Result:=(rRdh.Lin=rHdr.Lin)
-      and (rRdh.Scn=rHdr.Scn)
-      and (rRdh.Pix=rHdr.Pix)
-      and (rRdh.Fmt=rHdr.Fmt);
-end;
-
-function tImage.SkipMask(sImg:string):Tn2Byt; //Bild:Pixelraster
-{ iRM gibt eine Maske von "sImg" zurück. Das Ergebnis ist Eins für alle nicht
-  definierten Pixel und Null für alle anderen. }
-var
-  fxBnd:tn2Sgl=nil; //Kanal aus Vorbild
-  rHdr:trHdr; //Metadaten
-  X,Y: integer; //Bildzeilen-ID
-begin
-  Result:=nil;
-  Header.Read(rHdr,sImg);
-  fxBnd:=ReadBand(0,rHdr,sImg);
-  SetLength(Result,rHdr.Lin,rHdr.Scn);
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-      Result[Y,X]:=byte(isNan(fxBnd[Y,X]) or (fxBnd[Y,X]=0));
+  Result:=byte((rRdh.Lin<>rHdr.Lin)
+            or (rRdh.Scn<>rHdr.Scn)
+            or (rRdh.Pix<>rHdr.Pix))
+         + byte(rRdh.Fmt<>rHdr.Fmt);
 end;
 
 { hWI modifiziert den Header "rHdr" für den Zellindex. }
@@ -898,7 +857,7 @@ begin
   rHdr.Fmt:=3; //Integer
   rHdr.Stk:=1; //ein Kanal
   rHdr.Prd:=1; //Ein Kanal
-  rHdr.Cnt:=iCnt; //Zellen
+  rHdr.Cnt:=iCnt; //Zonen
   rHdr.aBnd:='cell_index';
   SetLength(rHdr.Pal,0);
   Write(rHdr,'Imalys cell index',sImg); //Header schreiben
@@ -915,7 +874,7 @@ begin
   iDlm:=pos('=',sLin); //Position Trenner
   if TryStrToInt(copy(sLin,iDlm-2,1),Result)=False
   or (Result<1) or (Result>7) then
-    Tools.ErrorOut(2,cBnd+IntToStr(Result));
+    Tools.ErrorOut(3,cBnd+IntToStr(Result));
 end;
 
 function tFilter._ParseValue_(sLin:string):single;
@@ -927,7 +886,7 @@ var
 begin
   iDlm:=pos('=',sLin); //Position Trenner
   if not TryStrToFloat(trim(copy(sLin,succ(iDlm),$FF)),Result) then
-    Tools.ErrorOut(2,cVal);
+    Tools.ErrorOut(3,cVal);
 end;
 
 function tFilter._ParseMLT_(sNme:string):tn2Sgl;
@@ -943,7 +902,7 @@ begin
   try
     AssignFile(dTxt,sNme);
     {$i-} Reset(dTxt); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cNme+sNme);
+    if IOResult<>0 then Tools.ErrorOut(3,cNme+sNme);
     repeat
       readln(dTxt,sLin); //zeilenweise lesen
       bGrp:=pos('GROUP = LEVEL2_SURFACE_REFLECTANCE_PARAMETERS',sLin)>0;
@@ -980,7 +939,7 @@ var
   X,Y:integer;
 begin
   Result:=nil;
-  if not FileExists(sImg) then Tools.ErrorOut(2,cFex+sImg);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cFex+sImg);
   SetLength(Result,3,1,1); //Vorgabe
   Header.Read(rHdr,sImg);
   //rHdr.Stk<3?
@@ -1036,28 +995,8 @@ begin
 
   Image.WriteMulti(Result,eeHme+cfHsv);
   rHdr.Stk:=3; //RGB
-  rHdr.aBnd:='pca-1'+#10+'pca-2'+#10+'pca-3'+#10;
+  rHdr.aBnd:='pca-1'+#10+'pca-2'+#10+'pca-3';
   Header.Write(rHdr,'PCA as HSV',eeHme+cfHsv);
-end;
-
-procedure tImage.WriteZero(
-  iCol,iRow:integer; //Bildgröße
-  sRes:string); //Ergebnis
-{ iWZ erzeugt einen leeren Kanal im Byte-Format und speichert ihn als "sRes".
-  → iWZ SCHREIBT KEINEN HEADER! }
-var
-  hRes: integer=-1; //Filehandle "Bild"
-  iaLin:tnByt=nil; //leere Zeile
-  Y: integer;
-begin
-  iaLin:=Tools.InitByte(iCol); //leere Zeile
-  try
-    hRes:=Tools.NewFile(0,0,sRes); //Bilddaten
-    for Y:=0 to pred(iRow) do
-      FileWrite(hRes,iaLin[0],iCol); //Zeile schreiben
-  finally
-    if hRes>=0 then FileClose(hRes);
-  end;
 end;
 
 { hWT modifiziert den übergebenen Header für ein Klassen-Bild und speichert ihn
@@ -1069,8 +1008,8 @@ end;
 procedure tHeader.WriteThema(
   iCnt:integer; //Anzahl Klassen ohne Rückweisung
   var rHdr:trHdr; //Vorbild
-  sFld:string; //Klassen-Namen, kommagetrennt
-  sRes:string); //Dateinamen: Ergebnis
+  sFld:string; //Klassen-Namen mit Rückweisung, kommagetrennt
+  sRes:string); //Ergebns-Name
 begin
   rHdr.Cnt:=iCnt; //Anzahl Klassen ohne Rückweisung
   rHdr.Fmt:=1; //Byte
@@ -1079,13 +1018,13 @@ begin
   rHdr.Fld:=sFld; //Klassen-Namen
   if rHdr.Cnt>=length(rHdr.Pal) then
     rHdr.Pal:=RandomPal(rHdr.Cnt); //Palette mit Zufalls-Farben
-    //rHdr.Pal:=_RandomPal(rHdr.Cnt); //Palette mit Zufalls-Farben
   rHdr.aBnd:='thema';
-  Write(rHdr,'thema',ChangeFileExt(sRes,'.hdr')); //Header schreiben
+  Write(rHdr,'thema',ChangeFileExt(sRes,cfHdr)); //Header schreiben
 end;
 
-function tHeader.ClassNames(var rHdr:trHdr):string;
 { CN schreibt "1+iCnt" Default-Klassen-Namen in einen String }
+
+function tHeader.ClassNames(var rHdr:trHdr):string;
 var
   iCnt:integer; //Anzahl kommagetrennte Strings
   I: integer;
@@ -1097,12 +1036,13 @@ begin
       Result:=Result+', class_'+IntToStr(I);
 end;
 
+{ hWC erzeugt Metadaten mit Koordinaten aus "rFrm" und speichert sie als
+  "merge.hdr" }
+
 procedure tHeader.WriteCover(
   rFrm:trFrm; //Koordinaten
   var rHdr:trHdr; //Metadaten
   sImg:string); //Ergebnis
-{ tHWS erzeugt Metadaten mit Koordinaten aus "rFrm" und speichert sie als
-  "merge.hdr" }
 
 function lSetMap:string;
 var
@@ -1146,7 +1086,7 @@ var
   rHdr:trHdr; //Metadaten
   X,Y:integer;
 begin
-  if not FileExists(sDem) then Tools.ErrorOut(2,cFex+sDem);
+  if not FileExists(sDem) then Tools.ErrorOut(3,cFex+sDem);
   Gdal.Hillshade(sDem); //Hillshade als Byte-Bild
   Header.Read(rHdr,eeHme+cfHse);
   ixTmp:=Image.ReadThema(rHdr,eeHme+cfHse);
@@ -1158,99 +1098,7 @@ begin
         else fxRes[Y,X]:=NaN; //nicht definiert
   Image.WriteBand(fxRes,0,eeHme+cfHse);
   Header.WriteScalar(rHdr,eeHme+cfHse);
-  Tools.HintOut(true,'Filter.HillShade: '+cfHse);
-end;
-
-{ fDn bestimmt die Abweichung nach Gauß in einem Kernel mit dem Radius "iRds"
-  und gibt das Ergebnis als Float zurück.
-  → Varianz = (∑x²-(∑x)²/n)/(n-1) }
-
-function tFilter.Deviation(
-  fxBnd:tn2Sgl; //Vorbild
-  iBtm,iRgt:integer; //Koordinaten rechte untere Ecke
-  iRds:integer): //Kernel-Radius
-  single; //Gauß'sche Abweichung
-var
-  fSqr:single=0;
-  fSum:single=0;
-  iCnt:integer=0;
-  V,W:integer;
-begin
-  for W:=iBtm-iRds*2 to iBtm do
-    for V:=iRgt-iRds*2 to iRgt do
-      if not isNan(fxBnd[W,V]) then
-      begin
-        fSqr+=sqr(fxBnd[W,V]);
-        fSum+=fxBnd[W,V];
-        inc(iCnt)
-      end;
-  if iCnt>1 then
-    Result:=sqrt((fSqr-sqr(fSum)/iCnt)/pred(iCnt));
-end;
-
-{ fCn bestimmt Rao's ß-Diversity mit einem quadratischen Kernel und gibt das
-  Ergebnis als Float zurück. Um alle Kombinationen zwischen zwei beliebigen
-  Pixeln zu erfassen bildet fCn aus dem ursprünglichen Kernel iterativ kleinere
-  bis der Prozess bei einen 2x2-Kernel endet. }
-
-function tFilter.Combination(
-  fxBnd:tn2Sgl; //Vorbild
-  iBtm,iRgt:integer; //Koordinaten rechte untere Ecke
-  iRds:integer): //Kernel-Radius (Size=iRds*2+1)
-  single; //Rao's ß-Diversität
-var
-  iCnt:integer=0; //Anzahl gültige Vergleiche
-  iExt:integer=0; //Extension des Sub-Kernels
-  iLft,iTop:integer; //variable linke obere Ecke
-  V,W:integer;
-begin
-  Result:=0;
-  for iExt:=iRds*2 downto 1 do //Sub-Kernel sukzessive verkleinern
-  begin
-    iLft:=iRgt-iExt;
-    iTop:=iBtm-iExt;
-    for W:=iTop to iBtm do //vertikale Kombination
-      if not isNan(fxBnd[W,iLft]) then
-        for V:=succ(iLft) to iRgt do
-        begin
-          if isNan(fxBnd[W,V]) then continue;
-          Result+=abs(fxBnd[W,iLft]-fxBnd[W,V]); //absolute Differenz
-          inc(iCnt)
-        end;
-    for V:=iLft to iRgt do //horizontale Kombination
-      if not isNan(fxBnd[iTop,V]) then
-        for W:=succ(iTop) to iBtm do
-        begin
-          if isNan(fxBnd[W,V]) then continue;
-          Result+=abs(fxBnd[iTop,V]-fxBnd[W,V]); //absolute Differenz
-          inc(iCnt)
-        end;
-  end;
-  if iCnt>0 then Result/=iCnt;
-end;
-
-{ fRs bildet die Abweichung nach Gauß oder die Diversity nach Rao mit einem
-  beweglichen Kernel und gibt das Ergebnis als Kanal zurück. Beide Ansätze
-  liefern gleiche (?) Ergebnisse, werden aber unterschiedlich gerechnet. }
-
-function tFilter.Roughness(
-  fxBnd:tn2Sgl; //Vorbild, ein Kanal
-  iRds:integer; //Kernel-Radius
-  iTyp:integer): //Kernel-Typ
-  tn2Sgl; //Ergebnis, ein Kanal
-var
-  X,Y:integer;
-begin
-  Result:=Tools.Init2Single(length(fxBnd),length(fxBnd[0]),dWord(NaN)); //Vorgabe = NoData
-  for Y:=iRds*2 to high(fxBnd) do
-    for X:=iRds*2 to high(fxBnd[0]) do
-    begin
-      if isNan(fxBnd[Y-iRds,X-iRds]) then continue;
-      case iTyp of
-        1: Result[Y-iRds,X-iRds]:=Deviation(fxBnd,Y,X,iRds);
-        2: Result[Y-iRds,X-iRds]:=Combination(fxBnd,Y,X,iRds);
-      end;
-    end;
+  Tools.HintOut(true,'HillShade: '+cfHse);
 end;
 
 { fKl filtert das Bild "sImg" mit dem Prozess "sExc" und speichert das Ergebnis
@@ -1275,22 +1123,22 @@ var
   fxRes:tn2Sgl=nil; //Ergebnis-Kanal
   rHdr:trHdr; //gemeinsame Metadaten
 begin
-  if not FileExists(sImg) then Tools.ErrorOut(2,cFex+sImg);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cFex+sImg);
   SetLength(fxRes,0);
-  if iRds<1 then Tools.ErrorOut(2,cRds);
+  if iRds<1 then Tools.ErrorOut(3,cRds);
   Header.Read(rHdr,sImg);
   if rHdr.Stk>1
     then fxRes:=Reduce.Brightness(Image.Read(rHdr,sImg)) //erste Hauptkomponente
     else fxRes:=Image.ReadBand(0,rHdr,sImg); //Kanal lesen
 
-  if sExc=cfDvn then fxRes:=Roughness(fxRes,iRds,1) else //Gauß-Abweichung = Rao
-  if sExc=cfRog then fxRes:=Roughness(fxRes,iRds,2) else //Rao's ß-Diversity
+  if sExc=cfEtp then fxRes:=_Diversity(fxRes,iRds) else //Rao's ß-Diversity
   if sExc=cfLow then fxRes:=Lowpass(fxRes,iRds) else //Lowpass-Filter
   if sExc=cfLpc then fxRes:=Laplace(fxRes,iRds) else //Laplace-Filter
   if sExc=cfNrm then fxRes:=Texture(fxRes,sExc) else //normalisierte Textur
   if sExc=cfTxr then fxRes:=Texture(fxRes,sExc) else //Standard Textur
   if sExc=cfIdm then fxRes:=Texture(fxRes,sExc) else //inverse Textur
-    Tools.ErrorOut(2,cCmd+sExc);
+{ todo: Slope · Exposition · Shade ist angekündigt aber nicht implementiert }
+    Tools.ErrorOut(3,cCmd+sExc);
 
   if iRds>1 then
     if (sExc=cfLpc) or (sExc=cfTxr) or (sExc=cfIdm) or (sExc=cfNrm)
@@ -1300,7 +1148,7 @@ begin
 
   Image.WriteBand(fxRes,0,sTrg); //neue Datei aus Ergebnis
   Header.WriteScalar(rHdr,sTrg); //Header für einen Kanal
-  Tools.HintOut(true,'Filter.KernelExecute: '+ExtractFileName(sExc));
+  Tools.HintOut(true,'Kernel: '+ExtractFileName(sExc));
 end;
 
 { hLN erzeugt einen Kanal-Namen aus dem Dateinamen des Kanals. Der Namen hat
@@ -1383,7 +1231,7 @@ var
   slHdr: tStringList=nil; //ENVI-Header Zeilen
   I: integer;
 begin
-  if not FileExists(sImg) then Tools.ErrorOut(2,cImg+sImg);
+  if not FileExists(sImg) then Tools.ErrorOut(3,cImg+sImg);
   try
     slHdr:=tStringList.Create;
     slHdr.LoadFromFile(ChangeFileExt(sImg,cfHdr)); //Header-Vorbild
@@ -1406,7 +1254,7 @@ end;
   iAM sammelt zunächst alle NoData-Marken in einer Maske und überträgt sie dann
   auf alle Kanäle. Nach iAM muss nur noch der erste Kanal geprüft werden. }
 
-procedure tImage.AlphaMask(sImg:string); //Bilddaten
+function tImage.AlphaMask(sImg:string):integer; //Bilddaten
 const
   cFex = 'iAM: Image not found: ';
 var
@@ -1415,10 +1263,11 @@ var
   rHdr:trHdr; //Metadaten
   B,X,Y:integer;
 begin
-  if not FileExists(sImg) then Tools.ErrorOut(2,cFex+sImg);
+  Result:=0;
+  if not FileExists(sImg) then Tools.ErrorOut(3,cFex+sImg);
   Header.Read(rHdr,sImg);
   fxImg:=Image.Read(rHdr,sImg);
-  pMsk:=@fxImg[0]; //zeige auf ersten Kanal
+  pMsk:=@fxImg[0]; //Zeiger auf ersten Kanal
 
   for B:=1 to pred(rHdr.Stk) do
     for Y:=0 to pred(rHdr.Lin) do
@@ -1429,82 +1278,17 @@ begin
   for Y:=0 to pred(rHdr.Lin) do
     for X:=0 to pred(rHdr.Scn) do
       if isNan(pMsk^[Y,X]) then
+      begin
         for B:=1 to pred(rHdr.Stk) do
           fxImg[B,Y,X]:=NaN;
+        inc(Result)
+      end;
 
   WriteMulti(fxImg,sImg); //Vorbild überschreiben
-  Tools.HintOut(true,'Image.AlphaMask: '+cfAlp);
-end;
-
-{ fCb maskiert und scaliert den Kanal "sBnd". fCb setzt alle Bildpixel mit dem
-  Wert von "fNod" auf NoData. fCb scaliert alle gültigen Pixel mit dem Faktor
-  "faFct" und anschließend mit dem Offset "fOfs". fCb überschreibt die
-  übernommenen Bilddaten. fCb liest und schreibt im IDL-Format.
-==> "Calibrate" wurde für Reflektanz/Radiation implemeniert. "Normalize" setzt
-    den 1% Percentil auf Null und den 99% Percentil auf Eins }
-
-procedure tFilter.Calibrate(
-  faFct:tnSgl; //Faktor für einzelne Kanäle ODER "nil"
-  fOfs:single; //Offset für alle Kanäle oder "0"
-  fNod:single; //NoData-Äquivalent in den Bilddaten
-  sImg:string); //Vorbild im Single-Format
-var
-  fxBnd:tn2Sgl=nil; //Kanal aus Vorbild
-  rHdr:trHdr; //Metadaten
-  B,X,Y:integer;
-begin
-  if (faFct=nil) and (fOfs=0) then exit; //keine Veränderung
-  Header.Read(rHdr,sImg);
-  //rHdr.Stk=length(faFct)?
-  for B:=0 to pred(rHdr.Stk) do
-  begin
-    fxBnd:=Image.ReadBand(B,rHdr,sImg);
-    for Y:=0 to pred(rHdr.Lin) do
-      for X:=0 to pred(rHdr.Scn) do
-        if not isNan(fxBnd[Y,X]) then //nur definierte Pixel
-          if not (fxBnd[Y,X]=fNod) //nich NoData-Äquivalent
-            then fxBnd[Y,X]:=fxBnd[Y,X]*faFct[B]+fOfs //Werte scaTools.ErrorOut(2,cFex+slImg[I]); lieren
-            else fxBnd[Y,X]:=NaN; //auf NoData setzen
-    Image.WriteBand(fxBnd,B,sImg);
-  end;
-end;
-
-{ iSB stapelt alle Kanäle aus "slBnd", maskiert sie und speichert das Ergebnis
-  als "stack". Mit einer gültigen Maske "sMsk" setzt iSB alle Pixel auf NoData
-  die in "sMsk" den Wert Null haben. iSB überträgt die Namen aus "slBnd" in den
-  ENVI-Header. iSB liest und schreibt 32-Bit float-Werte im IDL-Format. }
-{ ==> iSB ERWARTET, DASS ALLE KÄNÄLE ZUM GLEICHEN BILD GEHÖREN }
-
-function tImage.StackBands( // "StackBands" <==> "StackImages"
-  slBnd:tStringList; //Dateinamen als Liste
-  sMsk:string): //Maske [0..1] für definierte Werte ODER leer
-  string; //Name des Stacks
-var
-  ixBin:tn2Wrd=nil; //Masken-Kanal
-  fxBnd:tn2Sgl=nil; //Bildkanal
-  rHdr:trHdr; //Metadaten
-  sBnd:string=''; //Kanal-Namen als Strings mit Zeilentrennern
-  I,X,Y:integer;
-begin
-  Result:=eeHme+cfStk; //Ergebnis-Name
-  if length(sMsk)>0 then
-  begin
-    Header.Read(rHdr,sMsk); //QA-Maske
-    ixBin:=Image.ReadWord(rHdr,sMsk); //QA-Layer
-  end;
-  Header.Read(rHdr,slBnd[0]); //sollte immer gleich sein
-  for I:=0 to pred(slBnd.Count) do
-  begin
-    fxBnd:=ReadBand(0,rHdr,slBnd[I]); //einen Kanal lesen
-    if ixBin<>nil then
-      for Y:=0 to pred(rHdr.Lin) do
-        for X:=0 to pred(rHdr.Scn) do
-          if ixBin[Y,X]=0 then
-            fxBnd[Y,X]:=NaN; //ausmaskierte Werte löschen
-    WriteBand(fxBnd,I,Result); //Kanäle stapeln
-    sBnd+=Header.LayerName(slBnd[I])+#10; //mit Zeilentrenner
-  end;
-  Header.WriteMulti(rHdr,sBnd,Result);
+  Result:=byte(Result<rHdr.Lin*rHdr.Scn*0.99);
+  if Result>0
+    then Tools.HintOut(true,'AlphaMask: '+ExtractFileName(sImg))
+    else Tools.HintOut(true,'Image error: '+ExtractFileName(sImg))
 end;
 
 { tIWB schreibt den layer "fxImg" als Kanal "iBnd" in das Bild "sImg". Wenn
@@ -1524,8 +1308,8 @@ var
   Y: integer;
 begin
   //Datei muss zu fxImg passen
-  if fxImg=nil then Tools.ErrorOut(2,cNil);
-  if sImg='' then Tools.ErrorOut(2,cNme);
+  if fxImg=nil then Tools.ErrorOut(3,cNil);
+  if sImg='' then Tools.ErrorOut(3,cNme);
   try
     if FileExists(sImg)
       then hImg:=Tools.CheckOpen(sImg,fmOpenReadWrite) //öffnen
@@ -1580,10 +1364,10 @@ begin
     Tools.ErrorOut(3,cSze+sImg); //Siherheit
 end;
 
-{ iSN setzt einen definierten Wert (fNan) im Bild "sImg" auf NoData und
-  speichert das Ergebnis unter em bestehenden Namen. }
+{ fSN setzt in allen Pixeln "fNan" aus der Eingabe auf "NaN" und speichert das
+  Ergebnis unter dem bestehenden Namen. }
 
-procedure tFilter.SetNoData(
+procedure tFilter.xSetNoData(
   fNan:single; //NoData Wert im Vorbild
   sImg:string); //Bild-Name
 var
@@ -1602,7 +1386,7 @@ begin
           fxImg[B,Y,X]:=NaN;
       end;
   Image.WriteMulti(fxImg,sImg); //Werte zurückschreiben
-  Header.Write(rHdr,'NoData to NaN',sImg); //Metadaten
+  Header.Write(rHdr,'Compile.SetNoData',sImg); //Metadaten
 end;
 
 procedure tHeader.CopyRecord(
@@ -1624,11 +1408,12 @@ begin
   rRdh.Pif:=rHdr.Pif;
   rRdh.Pal:=nil;
   rRdh.aBnd:=rHdr.aBnd;
+  rRdh.aCvr:=rHdr.aCvr;
 end;
 
 //map info = {UTM, 1, 1, 570015, 5812905, 30, 30, 32, North,WGS-84}
 
-{ hOg ersetzt Ursprung des Koordinatensystems in "map info" string }
+{ hOg ersetzt den Ursprung des Koordinatensystems in "map info" string }
 
 procedure tHeader.Origin(
   fLat,fLon:double; //neue Kordinaten für linke obere Ecke
@@ -1648,151 +1433,348 @@ begin
   rHdr.Lon:=fLon;
 end;
 
-{ iSI bildet einen Stapel im ENVI-Format aus Bildern in "slImg". CRS, Kanäle,
-  Ausschnitt und Pixel MÜSSEN gleich sein und werden nur rudimentär überprüft.
-  iSI kann auch sehr große Kanäle kopieren. }
+{ hRL sucht im Header von "sImg" nach dem Codewort "sCde" und gibt den
+  entsprechenden Eintrag zurück }
 
-procedure tImage.StackImages(
-  slImg:tStringList; //Bilder-Liste
-  sTrg:string); //Ergebnis-Name
+function tHeader.ReadLine(
+  bErr:boolean; //Fehler anzeigen
+  sCde: string; //Bezeichner
+  sImg: string): //Bildname
+  string; //Werte ohne Code, evt CSL-String
 const
-  cOvl='iSI: Image size not fitting: ';
+  cCde = 'hRL: Item not found: ';
+  cImg = 'hRL: File not found: ';
 var
-  fxBnd:tn2Sgl=nil; //aktueller Kanal
-  iLin,iScn:integer; //Bildgröße, nur Kontrolle
-  iStk:integer=0; //Kanal-Zähler
-  rHdr:trHdr; //Metadaten
-  sBnd:string=''; //Kanal-Namen als Liste
-  B,I:integer;
+  slHdr: tStringList=nil; //ENVI-Header Zeilen
+  I: integer;
 begin
-  if slImg.Count>1 then
-  begin
-    for I:=0 to pred(slImg.Count) do
-    begin
-      if (I>0) and ((rHdr.Lin<>iLin) or (rHdr.Scn<>iScn)) then
-        Tools.ErrorOut(3,cOvl+slImg[I]); //Siherheit
-      Header.Read(rHdr,slImg[I]); //Header
-      iLin:=rHdr.Lin; iScn:=rHdr.Scn; //für nächses Bild
-      for B:=0 to pred(rHdr.Stk) do
+  Result:='';
+  if FileExists(ChangeFileExt(sImg,cfHdr)) then //Header
+  try
+    slHdr:=tStringList.Create;
+    slHdr.LoadFromFile(ChangeFileExt(sImg,cfHdr)); //Header-Vorbild
+    for I:=1 to pred(slHdr.Count) do
+      if LeftStr(slHdr[I],length(sCde))=sCde then
       begin
-        fxBnd:=ReadBand(B,rHdr,slImg[I]);
-        WriteBand(fxBnd,iStk,sTrg); //Kanal ergänzen
-        inc(iStk) //Kanäle zählen
+        Result:=trim(copy(slHdr[I],succ(pos('=',slHdr[I])),$FFF));
+        if Result[1]='{' then delete(Result,1,1); //Klammer entfernen
+        if Result[length(Result)]='}' then delete(Result,length(Result),1); //Klammer entfernen
+        break; //nur erstes Ergebnis
       end;
-      sBnd+=rHdr.aBnd; //Kanal-Namen,
-      if sBnd[length(sBnd)]<>#10 then sBnd+=#10; //Zeilentrenner
-    end;
-    Header.WriteMulti(rHdr,sBnd,sTrg)
+    if bErr and (Result='') then Tools.ErrorOut(3,cCde+sCde);
+  finally
+    slHdr.Free;
   end
-  else Tools.EnviRename(slImg[0],sTrg);
-  Tools.HintOut(true,'Image.Stack: '+ExtractFileName(sTrg));
+  else if bErr then Tools.ErrorOut(3,cImg+sImg);
 end;
 
-{ fNz normalisiert alle Kanäle aus "sImg" auf den Bereich [0..1] und speichert
-  das Ergebnis als "equal". nFz scaliert die Bildwerte am 1% Percentil auf Null
-  und die Werte am 99% Percentil auf Eins. fNZ liest und schreibt im IDL-
-  Format. }
+{ fRV nimmt "iSmp" Stichproben aus dem Kanal "ixBnd" und gibt sie als Array
+  zurück. Die Stichproben sind glichmäßig über das Bild verteilt. fRV ignoriert
+  DoData Bereiche. }
 
-function tFilter.Normalize(
-  iSmp:integer; //Anzahl Stichproben
-  sImg:string): //Bild-Name
-  string; //neuer Bildname
+function tFilter.RandomValues(
+  fxBnd:tn2Sgl; //Bildkanal
+  iSmp:integer): //Anzahl Stichpunkte
+  tnSgl; //Werte der Stichpunkte
 var
-  faVal:tnSgl=nil; //Werte-Stichproben
-  fFct:single; //Faktor für Scalierung
-  fHig,fLow:single; //Percentil-Werte
-  fSum:double; //Summe Stichproben
-  fxBnd:tn2Sgl=nil; //Kanal aus "sImg"
-  iHit:integer; //gültige Stichproben
+  fPrt:single=0; //Stichproben-Distanz in Pixeln
+  iCol,iRow:integer; //aktuelle Pixel-Koordinaten
+  iHit:integer=0; //Anzahl gültige Stichproben
+  iScn:integer=0; //Bildbreite in Pixeln
+  I:integer;
+begin
+  SetLength(Result,iSmp); //Stichpoben
+  fPrt:=length(fxBnd)*length(fxBnd[0])/iSmp; //Stichproben-Distanz
+  iScn:=length(fxBnd[0]); //lokal
+  for I:=0 to high(Result) do
+  begin
+    iCol:=trunc(fPrt*I) mod iScn; //regelmäßige Abstände
+    iRow:=trunc(fPrt*I) div iScn;
+    if isNan(fxBnd[iRow,iCol]) then continue; //nur definierte Punkte
+    Result[iHit]:=fxBnd[iRow,iCol]; //Wert am Stichpunkt
+    inc(iHit) //gültige Stichproben
+  end;
+  SetLength(Result,iHit); //Ergebnis an NoData anpassen
+end;
+
+// Bilddaten mit Percentil [1/99] normalisieren
+
+{ fEI normalisiert die Werte aller Kanäle im Bild "sImg" und speichert das
+  Ergebnis als "equal" im Arbeitsverzeichnis }
+{ fEI bestimmt die Schwellen "fLow" und "fHig" für die Percentile "fPrc" und
+  "1-fPrc" und scaliert alle Werte so, dass "fLow" auf Null und "fHig" auf Eins
+  fällt. }
+
+function tFilter.xEqualImages(
+  fPrc:single; //Schwelle für unteren Percentil
+  iSmp:integer; //Anzahl Stichpunkte
+  sImg:string): //Name Vorbild
+  string; //Name normalisiertes Bild
+const
+  cPrc = 'fEI: "percentil" must larger than 0 and smaller than 0.5: ';
+  cSmp = 'fEI: "samples" must be a large positive number: ';
+var
+  faVal:tnSgl=nil; //Werte ausgewählte Pixel
+  fFct:single=0; //Factor für Normalisierung
+  fLow,fHig:single; //kleinster und größter Percentil
+  fxBnd:tn2Sgl=nil; //Bild-Kanal
   rHdr:trHdr; //Metadaten
   B,X,Y:integer;
 begin
   Header.Read(rHdr,sImg); //Metadaten
   Result:=eeHme+ChangeFileExt(cfEql,'');
+  if (fPrc<=0) or (fPrc>=0.5) then Tools.ErrorOut(3,cPrc+FloatToStr(fPrc));
+  if iSmp<1 then Tools.ErrorOut(3,cSmp+IntToStr(iSmp));
   for B:=0 to pred(rHdr.Stk) do //Kanäle einzeln
   begin
-    faVal:=Table._BandHist(fSum,iHit,B,iSmp,sImg); //"fSum", "iHit" wird gesetzt
-    fLow:=faVal[round(iHit*0.01)]; //1% Percebntil
-    fHig:=faVal[round(iHit*0.99)]; //99% Percebntil
+    fxBnd:=Image.ReadBand(B,rHdr,sImg); //aktueller Kanal
+    faVal:=RandomValues(fxBnd,iSmp); //Stichpunkte als lineares Array
+    fLow:=Rank.Percentil(faVal,fPrc,pred(iSmp));
+    fHig:=Rank.Percentil(faVal,1-fPrc,pred(iSmp));
     fFct:=1.0/(fHig-fLow); //Steigung
-    fxBnd:=Image.ReadBand(B,rHdr,sImg); //Kanäle einzeln lesen
     for Y:=0 to pred(rHdr.Lin) do
       for X:=0 to pred(rHdr.Scn) do
         if not IsNan(fxBnd[Y,X]) then //NoData ignorieren
           fxBnd[Y,X]:=(fxBnd[Y,X]-fLow)*fFct; //scalieren
-    Image.WriteBand(fxBnd,B,Result); //Bilddaten
+    Image.WriteBand(fxBnd,B,Result); //Kanäle sichern
   end;
-  Header.WriteMulti(rHdr,rHdr.aBnd,Result) //Metadaten
+  Header.WriteMulti(rHdr.Prd,rHdr.Stk,rHdr,'',Result) //Metadaten
+end;
+
+{ fBC scaliert alle Kanäle in "sRes" mit dem Faktoren in "sFct" und danach mit
+  dem Offsets "sOfs" und setzt alle Werte von "fNod" auf NaN. fBC speichert das
+  Ergebnis unter demselben Namen wie das Vorbild }
+{ Wenn für Faktor und Offset nur ein Wert angegeben wird, scaliert fBC alle
+  Kanäle gleich. Sind mehr als ein Wert angegeben, scaliert fBC alle Kanäle
+  periodisch mit den übergebenen Werten. }
+
+procedure tFilter.xBandsCalibrate(
+  fNod:single; //NoData-Äquivalent (Null) in den Bilddaten
+  sFct:string; //Scalierung als CSV
+  sOfs:string; //Offset als CSV
+  sRes:string); //Vorbild und Ergebnis
+var
+  faFct:tnSgl=nil; //Faktor für einzelne Kanäle ODER "nil"
+  faOfs:tnSgl=nil; //Offset für alle Kanäle oder "0"
+  fxBnd:tn2Sgl=nil; //Kanal aus Vorbild
+  rHdr:trHdr; //Metadaten
+  B,X,Y:integer;
+begin
+  if (length(sFct)<1) and (length(sOfs)<1) and (isNan(fNod)) then exit; //keine Veränderung
+  Header.Read(rHdr,sRes);
+  faFct:=Tools.CsvToSingle(1,rHdr.Stk,sFct); //Array aus CSV-Text
+  faOfs:=Tools.CsvToSingle(0,rHdr.Stk,sOfs);
+  Tools.EnviCopy(sRes,eeHme+cfImp); //identische Kopie
+  for B:=0 to pred(rHdr.Stk) do
+  begin
+    fxBnd:=Image.ReadBand(B,rHdr,eeHme+cfImp);
+    for Y:=0 to pred(rHdr.Lin) do
+      for X:=0 to pred(rHdr.Scn) do
+        if not isNan(fxBnd[Y,X]) then //nur definierte Pixel
+          if not (fxBnd[Y,X]=fNod) //nicht NoData-Äquivalent
+            then fxBnd[Y,X]:=fxBnd[Y,X]*faFct[B]+faOfs[B]
+            else fxBnd[Y,X]:=NaN; //auf NoData setzen
+    Image.WriteBand(fxBnd,B,sRes); //Vorlage überschreiben
+  end;
+  Tools.HintOut(true,'BandsCalibrate: '+ExtractFileName(sRes));
+end;
+
+{ aBN ersetzt im Header "sTrg" die bestehenden Kanal-Namen durch die CSV-Liste
+  "sBnd". Die Anzahl der Namen muss zum Bild passen. }
+
+procedure tHeader.BandNames(
+  sBnd:string; //neue Kanal-Namen [CSV]
+  sTrg:string); //Bild-Name (ENVI)
+const
+  cStk='aBN: Passed band names do not fit image bands: ';
+var
+  rHdr:trHdr; //Metadaten
+begin
+  Header.Read(rHdr,sTrg);
+  if WordCount(sBnd,[','])<>rHdr.Stk then Tools.ErrorOut(3,cStk+sBnd);
+  rHdr.aBnd:=Tools.CommaToLines(sBnd);
+  Header.Write(rHdr,'Compile.BandNames',sTrg);
+end;
+
+{ iSI stapelt alle Bilder in "slImg"
+
+
+. iSI erwartet Bilder im ENVI-Format. CRS,
+  Kanäle, Ausschnitt und Pixel müssen gleich sein und werden nur rudimentär
+  überprüft. Mit "sArt" übernimmt iSI nur die ausugewählten Kanäle. iSI kann
+  auch sehr große Kanäle kopieren. }
+
+procedure tImage.xStackImages(
+  sArt:string; //Kanal-Auswahl als Formel [BX:BY] ODER ler für alle Kanäle
+  sTrg:string; //Ergebnis-Name
+  slImg:tStringList); //Bilder-Liste
+const
+  cOvl='iSI: Image size not fitting: ';
+var
+  fxBnd:tn2Sgl=nil; //aktueller Kanal
+  iHig,iLow:integer; //letzter, erster Kanal
+  iPrd,iLin,iScn:integer; //Periode, Bildgröße zur Kontrolle
+  iStk:integer=0; //Kanal-Zähler
+  rHdr:trHdr; //Metadaten
+  B,I:integer;
+begin
+  if sTrg='' then sTrg:=eeHme+cfStk; //Vorgabe = Stack
+  if (slImg.Count>1) or (length(sArt)>0) then
+  begin
+    for I:=0 to pred(slImg.Count) do
+    begin
+      Header.Read(rHdr,slImg[I]); //Header
+      Reduce.GetBands(iHig,iLow,rHdr.Stk,sArt); //Kanal-Nummern aus Eingabe
+      if I>0 then
+      begin //Kontrollen
+        if (rHdr.Lin<>iLin) or (rHdr.Scn<>iScn) then
+          Tools.ErrorOut(3,cOvl+slImg[I]); //Siherheit
+        if rHdr.Prd<>iPrd then iPrd:=1; //inhomogner Stapel
+      end
+      else
+      begin //erstes Bild ist Vorbild
+        iLin:=rHdr.Lin;
+        iScn:=rHdr.Scn;
+        iPrd:=rHdr.Prd;
+      end;
+      for B:=pred(iLow) to pred(iHig) do
+      begin
+        fxBnd:=ReadBand(B,rHdr,slImg[I]);
+        WriteBand(fxBnd,iStk,sTrg); //Kanal ergänzen
+        inc(iStk) //Kanäle zählen
+      end;
+    end;
+    Header.WriteMulti(iPrd,iStk,rHdr,'',sTrg)
+  end
+  else Tools.EnviCopy(slImg[0],sTrg);
+  Tools.HintOut(true,'StackImages: '+ExtractFileName(sTrg));
+end;
+
+{ fRs bildet die Abweichung nach Gauß oder die Diversity nach Rao mit einem
+  beweglichen Kernel und gibt das Ergebnis als Kanal zurück. }
+
+function tFilter._Diversity(
+  fxBnd:tn2Sgl; //Vorbild, ein Kanal
+  iRds:integer): //Kernel-Radius
+  tn2Sgl; //Ergebnis, ein Kanal
+var
+  fSqr:single=0;
+  fSum:single=0;
+  iCnt:integer=0;
+  V,W,X,Y:integer;
+begin
+  Result:=Tools.Init2Single(length(fxBnd),length(fxBnd[0]),dWord(NaN)); //Vorgabe = NoData
+  for Y:=iRds*2 to high(fxBnd) do
+    for X:=iRds*2 to high(fxBnd[0]) do
+    begin
+      if isNan(fxBnd[Y-iRds,X-iRds]) then continue;
+      fSqr:=0; fSum:=0; iCnt:=0;
+      for W:=Y-iRds*2 to Y do
+        for V:=X-iRds*2 to X do
+          if not isNan(fxBnd[W,V]) then
+          begin
+            fSqr+=sqr(fxBnd[W,V]);
+            fSum+=fxBnd[W,V];
+            inc(iCnt)
+          end;
+      if iCnt>1 then
+        Result[Y,X]:=sqrt((fSqr-sqr(fSum)/iCnt)/pred(iCnt));
+    end;
 end;
 
 end.
 
 {==============================================================================}
 
-{ tFEO bestimmt Rao's Q-Index (Distanzabhängige Divergenz) auf der Basis vom
-  "/.imalys/mapping" und speichert das Ergebnis als "/.imalys/entropy". Das
-  Ergebnis ist das Produkt aus Klassen-Häufigkeit im Kernel und den spektralen
-  Distanzen der Klassen. }
+{ fDn bestimmt die Abweichung nach Gauß in einem Kernel mit dem Radius "iRds"
+  und gibt das Ergebnis als Float zurück.
+  → Varianz = (∑x²-(∑x)²/n)/(n-1) }
 
-procedure tFilter.xRaosDiv(
-  iRds:integer; //Kernel-Radius
-  sImg:string); //Vorbild (Klassifikation)
-const
-  cFex = 'fEy: Image not found: ';
-  cThm = 'fEy: Selected image must be a classification: ';
+function tFilter.D_eviation(
+  fxBnd:tn2Sgl; //Vorbild
+  iBtm,iRgt:integer; //Koordinaten rechte untere Ecke
+  iRds:integer): //Kernel-Radius
+  single; //Gauß'sche Abweichung
 var
-  fxRes: tn2Sgl=nil; //Entropie-Werte
-  ixThm: tn2Byt=nil; //Klassein-Layer
-  rHdr: trHdr; //gemeinsame Metadaten
+  fSqr:single=0;
+  fSum:single=0;
+  iCnt:integer=0;
+  V,W:integer;
 begin
-  if not FileExists(sImg) then Tools.ErrorOut(2,cFex+sImg);
-  //iRds>0!
-  Header.Read(rHdr,sImg); //Metadaten Clusterung
-  if rHdr.Fmt<>1 then Tools.ErrorOut(2,cThm+sImg);
-  ixThm:=Image.ReadThema(rHdr,sImg); //Klassen, Karte
-  fxRes:=RaosDiv(rHdr.Cnt,iRds,ixThm); //Entropie aus Clusterung
-  Image.WriteBand(fxRes,0,eeHme+cfEtp); //Bilddaten
-  Header.WriteScalar(rHdr,eeHme+cfEtp); //Metadaten
-  Tools.HintOut(true,'Filter.Entropy: '+cfAlp);
+  for W:=iBtm-iRds*2 to iBtm do
+    for V:=iRgt-iRds*2 to iRgt do
+      if not isNan(fxBnd[W,V]) then
+      begin
+        fSqr+=sqr(fxBnd[W,V]);
+        fSum+=fxBnd[W,V];
+        inc(iCnt)
+      end;
+  if iCnt>1 then
+    Result:=sqrt((fSqr-sqr(fSum)/iCnt)/pred(iCnt));
 end;
 
-{ tFC gibt die Summe aller Differenzen zwischen den Werten der linken und der
-  oberen Kernel-Kante mit allen anderen Pixeln zurück. tFC zählt die Vergleiche
-  und gibt ihre Anzahl als "iCnt" zurück. Wird tFC iteriert, wird jede Pixel-
-  Kombination im Kernel genau einmal erfasst. Für die Iteration muss die linke
-  obere Ecke diagonal nach rechts unten verschoben werden. }
+{ fCn bestimmt Rao's ß-Diversity mit einem quadratischen Kernel und gibt das
+  Ergebnis als Float zurück. Um alle Kombinationen zwischen zwei beliebigen
+  Pixeln zu erfassen bildet fCn aus dem ursprünglichen Kernel iterativ kleinere
+  bis der Prozess bei einen 2x2-Kernel endet. }
 
-function tFilter.R_aosQ(
-  fxBnd: tn2Sgl; //Dichte (Hauptkomponenten)
-  var iCnt:integer; //Anzahl Vergleiche
-  iLft,iTop,iRgt,iBtm: integer): //Kernel-Grenzen (NICHT ÜBERPRÜFT)
-  single; //Summe Distanzen
+function tFilter.C_ombination(
+  fxBnd:tn2Sgl; //Vorbild
+  iBtm,iRgt:integer; //Koordinaten rechte untere Ecke
+  iRds:integer): //Kernel-Radius (Size=iRds*2+1)
+  single; //Rao's ß-Diversität
 var
-  V,W,X,Y: integer;
+  iCnt:integer=0; //Anzahl gültige Vergleiche
+  iExt:integer=0; //Extension des Sub-Kernels
+  iLft,iTop:integer; //variable linke obere Ecke
+  V,W:integer;
 begin
   Result:=0;
-  //iLft>=0; iTop>=0;
-  //iRgt<length(fxImg[0])
-  //iBtm<length(fxImg)
+  for iExt:=iRds*2 downto 1 do //Sub-Kernel sukzessive verkleinern
+  begin
+    iLft:=iRgt-iExt;
+    iTop:=iBtm-iExt;
+    for W:=iTop to iBtm do //vertikale Kombination
+      if not isNan(fxBnd[W,iLft]) then
+        for V:=succ(iLft) to iRgt do
+        begin
+          if isNan(fxBnd[W,V]) then continue;
+          Result+=abs(fxBnd[W,iLft]-fxBnd[W,V]); //absolute Differenz
+          inc(iCnt)
+        end;
+    for V:=iLft to iRgt do //horizontale Kombination
+      if not isNan(fxBnd[iTop,V]) then
+        for W:=succ(iTop) to iBtm do
+        begin
+          if isNan(fxBnd[W,V]) then continue;
+          Result+=abs(fxBnd[iTop,V]-fxBnd[W,V]); //absolute Differenz
+          inc(iCnt)
+        end;
+  end;
+  if iCnt>0 then Result/=iCnt;
+end;
 
-  for W:=iTop to iBtm do //linke Vertikale
-    if not isNan(fxBnd[W,iLft]) then
-      for Y:=iTop to iBtm do
-        for X:=succ(iLft) to iRgt do
-          if not isNan(fxBnd[Y,X]) then //NaNata addiert nichts
-          begin
-            Result+=abs(fxBnd[Y,X]-fxBnd[W,iLft]); //mit linker Kante
-            inc(iCnt)
-          end;
+{ fRs bildet die Abweichung nach Gauß oder die Diversity nach Rao mit einem
+  beweglichen Kernel und gibt das Ergebnis als Kanal zurück. Beide Ansätze
+  liefern gleiche (?) Ergebnisse, werden aber unterschiedlich gerechnet. }
 
-  for V:=iLft to iRgt do //obere Horizontale
-    if not isNan(fxBnd[iTop,V]) then
-      for Y:=succ(iTop) to iBtm do
-        for X:=iLft to iRgt do
-          if not isNan(fxBnd[Y,X]) then
-          begin
-            Result+=abs(fxBnd[Y,X]-fxBnd[iTop,V]); //mit oberer Kante
-            inc(iCnt)
-          end;
+function tFilter.R_oughness_(
+  fxBnd:tn2Sgl; //Vorbild, ein Kanal
+  iRds:integer; //Kernel-Radius
+  iTyp:integer): //Kernel-Typ
+  tn2Sgl; //Ergebnis, ein Kanal
+var
+  X,Y:integer;
+begin
+  Result:=Tools.Init2Single(length(fxBnd),length(fxBnd[0]),dWord(NaN)); //Vorgabe = NoData
+  for Y:=iRds*2 to high(fxBnd) do
+    for X:=iRds*2 to high(fxBnd[0]) do
+    begin
+      if isNan(fxBnd[Y-iRds,X-iRds]) then continue;
+      case iTyp of
+        1: Result[Y-iRds,X-iRds]:=D_eviation(fxBnd,Y,X,iRds);
+        2: Result[Y-iRds,X-iRds]:=C_ombination(fxBnd,Y,X,iRds);
+      end;
+    end;
 end;
 

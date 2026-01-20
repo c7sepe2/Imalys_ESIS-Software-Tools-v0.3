@@ -1,9 +1,9 @@
 unit vector; //+miscellanous
 
 { VECTOR sammelt Routinen um Vektoren zu transformieren und zu attributieren.
-  Dazu werden alle Vektor-Dateien als "vector.csv" importiert, zeilenweise
-  bearbeitet, die ergebnis-Zeilen als "focus.csv" und "focus.csvt" gespeichert
-  und zum Schluss in einem wählbaren Vektor-Format exportiert. In- und Export
+  Polygone werden als "vector.csv" importiert, zeilenweise bearbeitet und die
+  Ergebnis-Zeilen als "focus.csv" und "focus.csvt" gespeichert. Das WKT-Format
+  kann anschließend in einem wählbaren Format exportiert werden. In- und Export
   erledigt "gdal.ogr2ogr".
   ==> https://gdal.org/drivers/vector/csv.html beschreibt das CSV-Frmat
   ==> https://gdal.org/ dokumentiert
@@ -23,46 +23,42 @@ uses
   Classes, Math, StrUtils, SysUtils, format;
 
 type
-  tCover = class(tObject) //checked 241116
+  tCover = class(tObject) //checked 251116
     private
-      function _BandCount_(sImg:string):integer;
+      function EnviCover(sImg:string):trCvr;
+      function _EnviFrame_(sImg:string):trFrm;
+      function EqualTileDat(sHig,sLow:string):boolean;
       function _FrameHeader_(rFrm:trFrm; sImg:string):trHdr;
-      function Intersect(rImg,rRoi:trFrm):trFrm;
+      procedure GeoBonds(slInf:tStringList; iOfs:integer; var rRes:trFrm);
+      procedure ImgBonds(slInf:tStringList; iOfs:integer; var rRes:trFrm);
       function _LandsatFrame_(sArc:string):tarGeo;
-      function _PixelSize_(sImg:string):single;
       function _PointInside_(rPnt:trGeo; rPly:tarGeo):boolean;
-      function VectorFrame(sFrm:string):trFrm;
-      procedure WriteFrame(rFrm:trFrm; sPrj:string);
-  public
-      procedure ClipToShape(sFrm,sImg:string);
-      function CrsInfo(sImg:string):integer;
-      function MergeFrames(slImg:tStringList):trFrm;
-      function RasterFrame(sImg:string):trCvr;
-      function ReadFrame(sVct:string):trFrm;
-      function Rotate(iEpg:integer; rImg,rRoi:trFrm):trFrm;
-      function VectorCrsFrame(iEpg:integer; sPly:string):trFrm;
-      function xCover(var bFit:boolean; slImg:tStringList):trFrm;
-  end;
-
-  tLines = class(tObject) //Abfluss als Linien-Vektoren
-    private
-      function _BoundingBoxGML_(raLnk:tarFrm):trFrm;
-      function _CoordinatesGML_(iaNxt,iaPix:tnInt; var rHdr:trHdr):tarFrm;
-      procedure _RunOffGML_(iCrs:integer; sGml:string);
+      function _RasterCover_(sImg:string):trCvr;
+      function WordDelimiter(sNme:string):tnInt;
     public
-      function LandsatFrame(sWkt:string):trFrm;
-      procedure xDrainLines(iPln:integer);
-      procedure xDrainPoints();
+      function CrsInfo(sImg:string):integer;
+      function _RasterFrame(sImg:string):trFrm;
+      function VectorFrame(sFrm:string):trFrm;
+      function FrameWarp(sPly,sImg:string):trFrm;
+      procedure xClipToShape(sFrm,sImg:string);
   end;
 
-  tPoints = class(tObject) //Punkt-Vektor Anwendungen <== tTable?
+  tLines = class(tObject) //checked 251223
+    private
+      procedure _LocalMinima_(fxElv:tn2Sgl; ixIdx:tn2Int; const rHdr:trHdr);
+    public
+      function DrainWeight(iaLnk:tnInt; var rHdr:trHdr):tnSgl;
+      procedure PointChain(sGrv:string);
+      procedure RunoffPoints(faWgt:tnSgl; iaDrn,iaLnk:tnInt; var rHdr:trHdr);
+  end;
+
+  tPoints = class(tObject) //checked 250819
     private
       function AttribValues(sFtr:string):tn2Sgl;
       procedure DefaultFormat(iFtr:integer);
       procedure FieldTypes(sVct:string);
       procedure FormatAppend(iFtr:integer);
       function GetIndex(var rHdr:trHdr):tnInt;
-      procedure PixMask(iaPix:tnInt; sTmp:string);
       function PointAttributes(iaPix:tnInt; var rHdr:trHdr; sBnd:string):tnSgl;
       procedure _RandomPoints_(iCnt:integer; sImg:string);
       procedure PointAppend(fxVal:tn2Sgl; sFtr:string);
@@ -77,14 +73,15 @@ type
     private
       procedure AddFormat(sFmt:string);
       procedure AddInteger(iaVal:tnInt; sFtr:string);
+      function BandHist(var fSum:double; var iHit:integer; iBnd,iSmp:integer; sImg:string):tnSgl;
+      function _FeatureHist_(var fSum:double; var iHit:integer; faFtr:tnSgl):tnSgl;
       function FieldValues(sFld:string):tStringList;
     public
-      function AddThema(sFld:string):tStringList;
-      function _BandHist(var fSum:double; var iHit:integer; iBnd,iSmp:integer;
-               sImg:string):tnSgl;
+      function AddIndex(sFld:string):tStringList;
+      procedure QuickSort(faDev:tnSgl; iDim:integer);
+      procedure VectorMask(sFld,sVct:string);
+      function xImageStats(iSmp:integer; sImg:string):tStringList;
       function xLayerCorrelate(sImg:string):tStringList;
-      function _xImageStats(iSmp:integer; sImg:string):tStringList;
-      function _xStackCorrelation_(sImg:string):tn2Sgl; //
   end;
 
 var
@@ -96,898 +93,71 @@ var
 implementation
 
 uses
-  mutual, raster, thema;
+  index, mutual, raster, thema;
 
-{ tLC korreliert den ersten Kanal aus "sImg" mit allen anderen und gibt das
-  Ergebnis als Text zurück. tLC ignoriert NoData Pixel }
-{ tLC bestimmt den Korrelations-Koeffitienden nach Gauß für alle definieren
-  Pixel im Bild. }
-
-// Input=Vorbild-Timeline + Referenz-TimeLine
-
-function tTable._xStackCorrelation_(sImg:string):tn2Sgl; //
 const
-  cStk = 'tTC: Equal number of value and reference bands required! ';
-var
-  fPrd:double=0; //Summe der Podukte (∑x*y)
-  fRes:single=0; //Ergebnis-Zwischenlager
-  fSum,fMus:double; //Summe der Werte ∑x, ∑y
-  fSqr,fRqs:double; //Summe der Quadrate ∑x², ∑y²
-  fxImg:tn3Sgl=nil; //Zeitreihe Bilddaten + Zeitreihe Referenzen
-  iCnt:integer=0; //gültige Pixel
-  iStk:integer=0; //Kanäle pro Zeitreihe
-  rHdr:trHdr; //Metadaten
-  B,X,Y:integer;
-  //(∑xy-∑x∑y/n) / sqrt((∑x²-(∑x)²/n)*(∑y²-(∑y)²/n))
-begin
-  Header.Read(rHdr,sImg); //Metadaten
-  if rHdr.Stk mod 2 > 0 then Tools.ErrorOut(3,cStk+sImg); //rHdr.Stk muss durch 2 teilbar sein
-  fxImg:=Image.Read(rHdr,sImg); //Messung + Referenz
-  Result:=Tools.Init2Single(rHdr.Lin,rHdr.Scn,dWord(NaN));
+  FormatStrings : Array[1..1] of string = ('###.#####');
 
-  iStk:=rHdr.Stk div 2; //Kanäle pro Zeireihe
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-    begin
-      fPrd:=0; fSum:=0; fMus:=0; fSqr:=0; fRqs:=0; iCnt:=0; //Vorgabe
-      for B:=0 to pred(iStk) do
-      begin
-        if isNan(fxImg[B,Y,X]) or isNan(fxImg[B+iStk,Y,X]) then continue;
-        fSum+=fxImg[B,Y,X]; //Werte (Summe)
-        fMus+=fxImg[B+iStk,Y,X];
-        fPrd+=fxImg[B,Y,X]*fxImg[B+iStk,Y,X]; //Produkt (Summe)
-        fSqr+=sqr(fxImg[B,Y,X]); //Quadrate (Summe)
-        fRqs+=sqr(fxImg[B+iStk,Y,X]);
-        inc(iCnt); //gültige Pixel
-      end;
-      fRes:=(fSqr-sqr(fSum)/iCnt)*(fRqs-sqr(fMus)/iCnt);
-      if fRes>0 then Result[Y,X]:=(fPrd-fSum*fMus/iCnt)/sqrt(fRes);
-    end;
-  Image.WriteBand(Result,0,eeHme+'time-corl');
-  Header.WriteScalar(rHdr,eeHme+'time-corl');
-  Tools.HintOut(true,'table.TimeCorrelation: '+'time-corl')
+var
+  ruFrq:trSlc=(Ofs:0; Sze:0);
+  ruDat:trSlc=(Ofs:0; Sze:0);
+  ruTle:trSlc=(Ofs:0; Sze:0);
+
+{ ED sortiert eine String-Liste nach dem 8-stelligen Datum am Ende der Zeilen
+  und der Kanal-ID. Sensor, Kachel- und Kanal-ID müssen durch Underscore
+  getrennt im Kanal-Namen stehen }
+
+function DateBand(sl:tStringList; i1,i2:integer):integer;
+begin
+  with ruFrq do
+    if RightStr(sl[i1],8) < RightStr(sl[i2],8) then Result:=-1 else
+    if RightStr(sl[i1],8) > RightStr(sl[i2],8) then Result:=1 else
+      if copy(sl[i1],Ofs,Sze) < copy(sl[i2],Ofs,Sze) then Result:=-1 else
+      if copy(sl[i1],Ofs,Sze) > copy(sl[i2],Ofs,Sze) then Result:=1 else
+        Result:=0
 end;
 
-{ cPS zählt die Kanäle in "sImg"}
-
-function tCover._BandCount_(sImg:string):integer;
-var
-  bCnt:boolean=False;
-  slInf:tStringList=nil;
-  I:integer;
+function TileDate(sl:tStringList; i1,i2:integer):integer;
 begin
-  Result:=0;
-  try
-    slInf:=TStringList.Create;
-    slInf.AddText(Gdal.ImageInfo(sImg)); //GDAL-Info übernehmen
-    for I:=0 to pred(slInf.Count) do
-    begin
-      if bCnt then
-        if LeftStr(slInf[I],7)='  Band_'
-          then inc(Result)
-          else break;
-      if LeftStr(slInf[I],9)='Metadata:' then
-        bCnt:=True;
-    end;
-  finally
-    slInf.Free
-  end;
+  with ruTle do
+    if copy(sl[i1],Ofs,Sze) < copy(sl[i2],Ofs,Sze) then Result:=-1 else
+    if copy(sl[i1],Ofs,Sze) > copy(sl[i2],Ofs,Sze) then Result:=1 else
+      if RightStr(sl[i1],8) < RightStr(sl[i2],8) then Result:=-1 else
+      if RightStr(sl[i1],8) > RightStr(sl[i2],8) then Result:=1 else
+        Result:=0
 end;
 
-{ cPS übernimmt die Pixelgröße aus dem GDAL ImageInfo Text }
+// Raster-Bild Statistik
+// Min/Max für Extremwerte
+// Hig/Low für 99%/1% Percentil
+// Mid/Mea für mean/median
 
-function tCover._PixelSize_(sImg:string):single;
+function tTable._FeatureHist_(
+ var fSum:double; //Summe aller Stichproben
+ var iHit:integer; //Anzahl Stichpropen → gültige Treffer
+ faFtr:tnSgl): //Rohdaten (Attribut)
+ tnSgl; //sortierte Stichproben
 var
-  slInf:tStringList=nil;
-  I:integer;
-  qS:string;
+ fPrt:single; //Stichproben-Distanz
+ iIdx:integer; //Zonen-ID
+ Z:integer;
 begin
-  try
-    slInf:=TStringList.Create;
-    slInf.AddText(Gdal.ImageInfo(sImg)); //GDAL-Info übernehmen
-    for I:=pred(slInf.Count) downto 0 do
-      if LeftStr(slInf[I],14)='Pixel Size = (' then
-      begin
-        qS:=ExtractWord(2,slInf[I],['(',',']);
-        if not TryStrToFloat(ExtractWord(2,slInf[I],['(',',']),Result) then
-          Result:=0;
-        break; //fertig
-      end;
-  finally
-    slInf.Free
-  end;
-end;
-
-{ cFH überträgt die Koordinaten aus einem Frame in einen IDL-Header.
-  ==> CFH ÜBERPRÜFT NICHT DAS CRS }
-
-function tCover._FrameHeader_(
-  rFrm:trFrm; //Rahmen (aus Polygon)
-  sImg:string): //Vorbild (Teil)
-  trHdr; //Metadaten innerhalb des Frames
-var
-  sMap:string; //ENVI Map-Info
-  I:integer;
-begin
-  Header.Read(Result,sImg);
-  with Result do
-  begin
-    Lat:=trunc(rFrm.Top/Pix)*Pix; //nach links runden
-    Lon:=trunc(rFrm.Lft/Pix)*Pix+Pix; //nach oben runden
-    sMap:=ExtractWord(1,Map,[',']);
-    for I:=2 to 3 do
-      sMap+=', '+ExtractWord(I,Map,[',']);
-    sMap+=', '+FloatToStr(Lon);
-    sMap+=', '+FloatToStr(Lat);
-    for I:=6 to 10 do
-      sMap+=', '+ExtractWord(I,Map,[',']);
-    Map:=sMap;
-    {UTM, 1, 1, 594810, 5903730, 30, 30, 32, North,WGS-84}
-    Lin:=round((rFrm.Top-rFrm.Btm)/Pix);
-    Scn:=round((rFrm.Rgt-rFrm.Lft)/Pix);
-    Prd:=Stk;
-    Stk:=0; //neue Datei erzeugen
-  end;
-  //Header.Write(Result,'compare',eeHme+'temp.hdr'); KONTROLLE
-end;
-
-{ fPA gibt die Werte einzelner Pixel aus dem Kanal "sBnd" zurück. Die Position
-  der Pixel muss als Pixel-Index in "iaPix" übergeben werden. }
-
-function tPoints.PointAttributes(
-  iaPix:tnInt; //Indices ausgewählter Pixel
-  var rHdr:trHdr; //Metadaten
-  sBnd:string): //Bild-Name
-  tnSgl; //Werte der ausgewählten Pixel
-const
-  cPix = 'fPA: List of pixel indices must be provided!';
-var
-  fxBnd:tn2Sgl=nil; //aktueller Kanal
-  iCnt:integer; //Anzahl Pixel
-  I:integer;
-begin
-  if iaPix=nil then Tools.ErrorOut(2,cPix);
-  Result:=Tools.InitSingle(length(iaPix),dWord(Nan)); //Vorgabe
-  iCnt:=rHdr.Scn*rHdr.Lin; //Anzahl Pixel
-  fxBnd:=Image.ReadBand(0,rHdr,sBnd); //Bildkanal
-  for I:=0 to high(iaPix) do
-    if (iaPix[I]>=0) and (iaPix[I]<iCnt) then
-      with rHdr do
-        Result[I]:=fxBnd[iaPix[I] div Scn,iaPix[I] mod Scn];
-  Tools.HintOut(true,'Points.Attributes: menory');
-end;
-
-function tLines._CoordinatesGML_(
-  iaNxt:tnInt; //Zellindex der verknüpften Zelle
-  iaPix:tnInt; //Pixelindex des Minimums jeder Zelle
-  var rHdr:trHdr): //Metadaten
-  tarFrm; //Koordinaten für zwei Punkte = [Lft,Top] – [Rgt,Btm]
-{ lC konvertiert Pixel-Koordinaten in geographische Koordinaten und gibt sie
-  als "tBox" zurück. lC übernimmt die Projektion aus dem ENVI-Header in "rHdr".
-  Die Koordinaten im ENVI-Header beziehen sich auf die linke untere Ecke des
-  Bilds. lC korrigiert auf Pixelmitte. lC ist auf Linien aus zwei Punkten
-  spezialisiert. }
-var
-  fLat,fLon:single; //Kordinaten-ursprung für Pixelmitte
-  Z:integer;
-begin
-  SetLength(Result,length(iaPix));
-  fLon:=rHdr.Lon+0.5*rHdr.Pix; //Ursprung auf Pixelmitte
-  fLat:=rHdr.Lat-0.5*rHdr.Pix;
-  for Z:=1 to high(iaPix) do
-    if iaNxt[Z]>0 then
-    begin
-      Result[Z].Lft:=fLon+(iaPix[Z] mod rHdr.Scn)*rHdr.Pix; //Geo-Koordinaten aus Pixelkoordinaten
-      Result[Z].Top:=fLat-(iaPix[Z] div rHdr.Scn)*rHdr.Pix;
-      Result[Z].Rgt:=fLon+(iaPix[iaNxt[Z]] mod rHdr.Scn)*rHdr.Pix;
-      Result[Z].Btm:=fLat-(iaPix[iaNxt[Z]] div rHdr.Scn)*rHdr.Pix;
-    end
-    else Result[Z]:=crFrm; //Vorgabe
-end;
-
-function tLines._BoundingBoxGML_(raLnk:tarFrm):trFrm;
-{ lBB bestimmt ein einschließendes Rechteck aus allen Koordinaten in "raLnk" }
-const
-  cMax:single=MaxInt;
-var
-  Z:integer;
-begin
-  Result:=crFrm; //Vorgabe, nicht definiert
-  for Z:=1 to high(raLnk) do
-    if raLnk[Z].Lft<cMax then
-    begin
-      Result.Lft:=min(raLnk[Z].Lft,Result.Lft);
-      Result.Top:=max(raLnk[Z].Top,Result.Top);
-      Result.Rgt:=max(raLnk[Z].Rgt,Result.Rgt);
-      Result.Btm:=min(raLnk[Z].Btm,Result.Btm);
-    end;
-end;
-
-procedure tLines._RunOffGML_( //==> mit "resistance" = RST verknüpft
-  iCrs:integer; //EPSG-Code
-  sGml:string); //Dateiname
-{ lRO überträgt Abfluss-Attribute aus "index.bit" in Linien-Polygone aus
-  jeweils zwei Punkten. Attribute sind eine fortlaufende ID und der Abfluss.
-  lRO bietet keine Format-Altenativen. }
-const
-  cGml = 'Impossible to create file ';
-var
-  dGml: TextFile; //Initialisierung
-  faWgt:tnSgl=nil; //scalares Attribut
-  iaNxt:tnInt=nil; //Pixelindex der verknüpften Zelle
-  iaPix:tnInt=nil; //Pixelindex der Zelle
-  raLnk:tarFrm=nil; //Punkt-Verknüpfungen
-  iFtr:integer=0; //fortlaufende Nummer
-  rFrm:trFrm; //Bounding-Box
-  rHdr:trHdr; //Metadaten Zellindex
-  sCrs:string=''; //EPSG-Code ausgeschrieben
-  Z:integer;
-begin
-  iaPix:=tnInt(Tools.BitExtract(0,eeHme+cfIdx)); //Quelle-Pixelindex
-  iaNxt:=tnInt(Tools.BitExtract(1,eeHme+cfIdx)); //Senke-Zellindex
-  faWgt:=Tools.BitExtract(4,eeHme+cfIdx); //Attribut
-  Header.Read(rHdr,eeHme+cfIdx); //Pixelgröße, Koordinaten
-  sCrs:='"EPSG:'+IntToStr(iCrs)+'"'; //ausgeschrieben
-  sGml:=ExtractFileName(ChangeFileExt(sGml,'')); //ohne Pfad, ohne Extension
-  raLnk:=_CoordinatesGML_(iaNxt,iaPix,rHdr); //Geo-Koordinaten aus Pixelindices
-  rFrm:=_BoundingBoxGML_(raLnk); //Bounding-Box
-  try
-    AssignFile(dGml,eeHme+sGml+cfGml);
-    {$i-} Rewrite(dGml); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cGml+sGml);
-    writeln(dGml,'<?xml version="1.0" encoding="utf-8" ?>');
-    writeln(dGml,'<ogr:FeatureCollection');
-    writeln(dGml,'     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"');
-    writeln(dGml,'     xsi:schemaLocation="http://ogr.maptools.org/ gml_test.xsd"');
-    writeln(dGml,'     xmlns:ogr="http://ogr.maptools.org/"');
-    writeln(dGml,'     xmlns:gml="http://www.opengis.net/gml">');
-    writeln(dGml,'  <gml:boundedBy>');
-    writeln(dGml,'    <gml:Box>');
-    writeln(dGml,'      <gml:coord><gml:X>'+FloatToStr(rFrm.Lft)+'</gml:X>'+
-      '<gml:Y>'+FloatToStr(rFrm.Top)+'</gml:Y></gml:coord>');
-    writeln(dGml,'      <gml:coord><gml:X>'+FloatToStr(rFrm.Rgt)+'</gml:X>'+
-      '<gml:Y>'+FloatToStr(rFrm.Btm)+'</gml:Y></gml:coord>');
-    writeln(dGml,'    </gml:Box>');
-    writeln(dGml,'  </gml:boundedBy>');
-    for Z:=1 to high(iaPix) do
-      if iaNxt[Z]>0 then
-      begin
-        writeln(dGml,'  <gml:featureMember>');
-        writeln(dGml,'    <ogr:'+sGml+' fid="'+sGml+'.'+IntToStr(iFtr)+'">');
-        writeln(dGml,'      <ogr:geometryProperty>'+'<gml:MultiLineString '+
-          'srsName='+sCrs+'><gml:lineStringMember><gml:LineString>'+
-          '<gml:coordinates>'+
-          FloatToStr(raLnk[Z].Lft)+','+FloatToStr(raLnk[Z].Top)+#32+
-          FloatToStr(raLnk[Z].Rgt)+','+FloatToStr(raLnk[Z].Btm)+
-          '</gml:coordinates></gml:LineString></gml:lineStringMember>',
-          '</gml:MultiLineString></ogr:geometryProperty>');
-        writeln(dGml,'      <ogr:id>'+IntToStr(succ(iFtr))+'</ogr:id>');
-        writeln(dGml,'      <ogr:flow>'+FloatToStr(faWgt[Z])+'</ogr:flow>');
-        writeln(dGml,'    </ogr:'+sGml+'>');
-        writeln(dGml,'  </gml:featureMember>');
-        inc(iFtr); //fortlaufend zählen
-      end;
-    writeln(dGml,'</ogr:FeatureCollection>');
-  finally
-    Flush(dGml);
-    CloseFile(dGml);
-  end; //of try ..
-end;
-
-function _PointAttributes(
-  iaPix:tnInt; //Indices ausgewählter Pixel
-  var rHdr:trHdr; //Metadaten
-  sBnd:string): //Bild-Name
-  tnSgl; //Werte der ausgewählten Pixel
-{ fPA gibt die Werte einzelner Pixel aus dem Kanal "sBnd" zurück. Die Position
-  der Pixel wird als Pixel-Indices in "iaPix" übergeben. }
-var
-  fxBnd:tn2Sgl=nil; //Kanal
-  I:integer;
-begin
-  fxBnd:=Image.ReadBand(0,rHdr,sBnd); //Bildkanal
-  Result:=Tools.InitSingle(length(iaPix),dWord(Nan)); //Vorgabe
-  for I:=0 to high(iaPix) do
-    with rHdr do
-      Result[I]:=fxBnd[iaPix[I] div Scn,iaPix[I] mod Scn];
-end;
-
-{ fGI liest projizierte Koordinaten von Vektor-Punkten im WKT-Format aus einer
-  CSV Datei und transformiert sie in Pixel-Indices. Für Punkte außerhalb der
-  Bildfläche gibt fGI (-1) zurück. Der Pixel-Ursprung ist links oben. }
-
-function tPoints.GetIndex(
-  var rHdr:trHdr): //Metadaten Vorbild
-  tnInt; //Pixel-Indices[Vektor-Punkt]
-const
-  cCsv = 'Impossible to read file: ';
-  cPnt = 'Not a WKT point format: ';
-  cWkt = 'Geometry must be WKT formatted: ';
-var
-  dCsv:TextFile; //Datei
-  fLat,fLon:single; //aktuelle Koordinaten (Ursprung links unten)
-  iHrz,iVrt:integer; //Pixel-Koordinaten (Ursprung links oben)
-  nRes:integer=0; //Dimension Pixelindices
-  sLin:string; //aktuelle Zeile
-begin
-  SetLength(Result,$FF); //nicht definiert
-  try
-    AssignFile(dCsv,eeHme+cfVct);
-    {$i-} Reset(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+eeHme+cfVct);
-    readln(dCsv,sLin); //Zeile mit Feldnamen
-    if ExtractDelimited(1,sLin,[','])<>'WKT' then
-      Tools.ErrorOut(2,cCsv+eeHme+cWkt);
-    repeat
-      readln(dCsv,sLin); //Zeile mit Koordinaten (und Attributen)
-      sLin:=ExtractDelimited(1,sLin,[',']); //WKT-Geometrie
-      if (pos('POINT Z',sLin)>0) or (pos('POINT',sLin)>0) then //nur Punkte
-      begin
-        sLin:=ExtractDelimited(2,sLin,['(',')']); //Substring in Klammern
-        fLon:=StrToFloat(ExtractDelimited(1,sLin,[#32])); //1. Substring in Blankes
-        fLat:=StrToFloat(ExtractDelimited(2,sLin,[#32])); //2. Substring in Blankes
-        iHrz:=trunc((fLon-rHdr.Lon)/rHdr.Pix); //Pixel-Koordinaten
-        iVrt:=trunc((rHdr.Lat-fLat)/rHdr.Pix);
-        if (iHrz<0) or (iHrz>pred(rHdr.Scn))
-        or (iVrt<0) or (iVrt>pred(rHdr.Lin))
-          then Result[nRes]:=-1 //Pixel außerhhalb der Bildfläche
-          else Result[nRes]:=iVrt*rHdr.Scn+iHrz; //Pixel-Index
-        inc(nRes); //fortlaufend zählen
-        if nRes>=length(Result) then
-          SetLength(Result,nRes*2);
-      end
-      else Tools.ErrorOut(2,cPnt+eeHme+cfVct);
-    until eof(dCsv);
-    SetLength(Result,nRes);
-  finally
-    CloseFile(dCsv);
-  end; //of try ..
-  Tools.HintOut(true,'Points.GetIndex: memory');
-end;
-
-procedure tPoints.PixMask(
-  iaPix:tnInt; //Pixelindices als Array
-  sTmp:string); //Vorbild für Geometrie
-{ fPM erzeugt eine Maske aus Pixelindices und gibt sie als Klassen-Bild zurück }
-var
-  iCnt:integer; //Anzahl Pixel
-  ixMsk:tn2Byt=nil; //Raster-Maske Testpunkte
-  rHdr:trHdr;
-  I:integer;
-begin
-  Header.Read(rHdr,sTmp);
-  ixMsk:=Tools.Init2Byte(rHdr.Lin,rHdr.Scn);
-  iCnt:=rHdr.Lin*rHdr.Scn; //Anzahl Pixel
-  for I:=0 to high(iaPix) do
-    if (iaPix[I]>=0) and (iaPix[I]<iCnt) then //nur innerhalb der Bildfläche
-      ixMsk[iaPix[I] div rHdr.Scn,iaPix[I] mod rHdr.Scn]:=1;
-  Header.WriteThema(1,rHdr,'',eeHme+cfMsk);
-  Image.WriteThema(ixMsk,eeHme+cfMsk);
-end;
-
-procedure tPoints.FieldTypes(sVct:string); //Geometrie im CSV-Format
-{ pFT erzeugt eine CSVT-Datei mit Formatangaben für die Attribute der Vektor-
-  Datei "sVct". pFT übernimmt aus der CSV-Datei die Feldnamen (erste Zeile) des
-  Originals und verknüpft sie mit den Format-Angaben aus dem "ogrinfo"-Prozess
-  des Originals. }
-const
-  cWkt = 'CSV vector geometry must use WKT format! ';
-var
-  iBrk:integer; //Grenze Feldname-Dimension
-  iFld:integer; //Anzahl felder ohne "WKT"
-  slIfo:tStringList=nil; //Container für OgrInfo
-  sFld:string; //Feldname mit Dimension
-  sTyp:string=''; //Format-String
-  I:integer;
-begin
-  sFld:=Tools.LineRead(eeHme+cfVct); //erste Zeile der CSV-Version
-  if LeftStr(sFld,3)<>'WKT' then Tools.ErrorOut(2,cWkt+eeHme+cfVct);
-  iFld:=pred(WordCount(sFld,[','])); //Anzahl Felder ohne "WKT"
-  try
-    slIfo:=tStringList.Create;
-    slIfo.AddText(Gdal.OgrInfo(sVct)); //Info als Stream
-    for I:=pred(slIfo.Count) downto slIfo.Count-iFld do //nur Feldnamen
-    begin
-      iBrk:=pos(': ',slIfo[I])+2; //Grenze Name: Format
-      if iBrk>2
-        then sFld:=copy(slIfo[I],iBrk,$FF) //nur Format
-        else sFld:=''; //Vorgabe = String
-      sTyp:=','+sFld+sTyp;
-    end;
-  finally
-    slIfo.Free;
-  end;
-end;
-
-procedure tPoints._RandomPoints_(
-  iCnt:integer; //Anzahl zufälliger Punkte
-  sImg:string); //Bilddaten für Bounding Box
-{ pRP erzeugt "iCnt" Vektor-Punkte im CSV-Format, die zufällig über die
-  Bounding-Box des Bilds "sImg" verteilt sind. Die Koordinaten werden im WKT-
-  Format gespeichert, einziges Attribut ist eine fortlaufende ID. }
-const
-  cCrt = 'pRP: Error while creating: ';
-  cFmt = 'WKT,Integer(12)';
-var
-  dVct:TextFile; //Vektor-Punkte im CSV-Format
-  fLat,fLon:double; //zufällige Koordinaten
-  iHrz,iVrt:integer; //Bildgröße in Metern
-  rHdr:trHdr; //Metadaten
-  I:integer;
-begin
-  Header.Read(rHdr,sImg);
-  iHrz:=trunc(rHdr.Scn*rHdr.Pix); //Bildbreite in Metern
-  iVrt:=trunc(rHdr.Lin*rHdr.Pix); //Bildhöhe in Metern
-  try
-    AssignFile(dVct,eeHme+cfVct); //Punkte mit ergänzten Attributen
-    {$i-} Rewrite(dVct); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCrt+eeHme+cfVct);
-    writeln(dVct,'WKT,ID'); //Feldnamen
-    Randomize;
-    for I:=1 to iCnt do
-    begin
-      fLat:=rHdr.Lat-random(iVrt);
-      fLon:=rHdr.Lon+random(iHrz);
-      writeln(dVct,'"POINT ('+FloatToStr(fLon)+#32+FloatToStr(fLat)+')",'+
-        IntToStr(I));
-    end;
-  finally
-    Flush(dVct);
-    CloseFile(dVct);
-  end; //of try ..
-  Tools.TextOut(eeHme+ChangeFileExt(cfVct,'.csvt'),cFmt) //Format der Felder
-end;
-
-function tPoints.AttribValues(sFtr:string):tn2Sgl; {lokale Bilder: Attribut-Tabelle}
-{ pAV erzeugt eine Tabelle mit dem Wert der Bildpixel am Ort der Punkt-Vektoren
-  "vector.csv". Die Bilddaten aus der Liste "sFtr" müssen im Imalys-Verzeichnis
-  stehen. Die Punkt-Vektoren müssen im WKT-Format in "vector.csv" stehen. Bild-
-  und Vektordaten müssen dieselbe Projektion haben. Die Geometrie der Bilddaten
-  muss identisch sein. }
-{ pAV konvertiert die Koordinaten aus "vector.csv" in einen Pixelindex. Der
-  Index basiert auf der Bounding-Box des ersten Bilds in "sFtr". pAV ignoriert
-  Vektor-Punkte außerhalb der Bounding-Box. }
-var
-  iaPix:tnInt=nil; //Pixelindices
-  rHdr:trHdr; //Metadaten
-  slFtr:tStringList=nil; //Dateinamen-Liste
-  I:integer;
-begin
-// gleiches CRS bei allen Bildern und cfVct? ← EPSG überprüfen
-  try
-    slFtr:=tStringList.Create;
-    slFtr.AddText(Tools.CommaToLine(sFtr)); //ausgewählte lokale Bilder
-    Header.Read(rHdr,eeHme+slFtr[0]); //Metadaten aus erstem Bild
-    iaPix:=GetIndex(rHdr); //Pixelindices aus Vektor-Punkten
-    //PixMask(iaPix,slFtr[0]); //NUR KONTROLLE DER LAGE
-    SetLength(Result,slFtr.Count,1); //leere Attribut-Liste
-    for I:=0 to pred(slFtr.Count) do //alle gewählten Prozesse
-      Result[I]:=PointAttributes(iaPix,rHdr,eeHme+slFtr[I]); //Werte am Ort der Punkte
-  finally
-    slFtr.Free;
-  end;
-end;
-
-{ fVA liest die Vorlage "vector.csv", ergänzt Attribute und speichert das
-  Ergebnis als "focus.csv". fVA liest und schreibt einzelne Zeilen im Text-
-  Format. fVA übernimmt die Feldnamen aus "sFtr" und die Werte der Tabelle aus
-  "fxVal". Feldnamen und Werte müssen korresponieren. fVA schreibt alle Werte
-  im Float-Format und markiert nicht definierte Werte als "NA". }
-
-procedure tPoints.PointAppend(
-  fxVal:tn2Sgl; //Werte[Kanal,Punkt] (aus Vorbild)
-  sFtr:string); //Feldnamen = Prozess-Namen als CSV
-const
-  cCsv = 'fVA: File not available: ';
-  cFcs = 'fVA: File creation failed: ';
-  cFld = 'fVA: Number of field names differ from field values!';
-  cRcd = 'fVA: Number of vector records differ from extraced values!';
-var
-  dCsv:TextFile; //Vektor-Import im CSV-Format
-  dFcs:TextFile; //ergänzte Attribute im CSV-Format
-  iRcd:integer=0; //Anzahl Punkte=Zeilen
-  sLin:string; //Zeilen-Puffer
-  I:integer;
-begin
-  if WordCount(sFtr,[','])<>length(fxVal) then
-    Tools.ErrorOut(2,cFld);
-  //length(slPrc)=length(fxVal)?
-  //Anzahl Zeilen <> Länge Attribut-Arrays
-  try
-    AssignFile(dCsv,eeHme+cfVct); //Test-Punkte als CSV
-    {$i-} Reset(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+eeHme+cfVct);
-
-    AssignFile(dFcs,eeHme+cfFcs); //Punkte mit ergänzten Attributen
-    {$i-} Rewrite(dFcs); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cFcs+eeHme+cfFcs);
-
-    readln(dCsv,sLin); //bestehene Feldnamen
-    writeln(dFcs,sLin+','+DelSpace(sFtr)); //neuer Header
-    repeat
-      readln(dCsv,sLin); //bestehene Werte
-      for I:=0 to high(fxVal) do //alle neuen Felder
-        if not IsNan(fxVal[I,iRcd])
-          then sLin+=','+FloatToStr(fxVal[I,iRcd])
-          else sLin+=',NA';
-      inc(iRcd); //neue Zeile
-      writeln(dFcs,sLin); //Zeile speichern
-    until eof(dCsv);
-    if length(fxVal[0])<>iRcd then Tools.ErrorOut(2,cRcd);
-  finally
-    CloseFile(dCsv);
-    Flush(dFcs);
-    CloseFile(dFcs);
-  end; //of try ..
-end;
-
-procedure tPoints.FormatAppend(iFtr:integer);
-{ pFA erweitert die CSVT-Datei "vector.csvt" um "iFtr" neue Felder im Float-
-  Format und speichert das Ergebnis als "focus.csvt". }
-const
-  cFlt = ',Real(24.15)';
-var
-  sFmt:string;
-  I:integer;
-begin
-  sFmt:=Tools.LineRead(eeHme+ChangeFileExt(cfVct,'.csvt'));
-  for I:=0 to pred(iFtr) do
-    sFmt+=cFlt; //Single-Format-Code anhängen
-  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),sFmt);
-end;
-
-{ pAt überträgt Werte von Bildpixeln in die Attribut-Tabelle von Punkt-
-  Vektoren. Dazu importiert pAt die Punkte als "vector.csv", transformiert sie
-  in die Projektion "iCrs", ergänzt die Werte der Attribute für alle Records,
-  speichert das Ergebnis als "focus.csv" und transformiert die CSV-Datei in das
-  Shape-Formet. "sFtr" muss gültige Dateinamen aus dem Imalys-Verzeichnis
-  enthalten. "Raster- und CSV-Vektoren müssen dieselbe Projektion haben. }
-
-procedure tPoints.xPointAttrib(
-  iCrs:integer; //Projektion der Bilddaten
-  sFtr:string; //Merkmale = Dateinamen in kommagetrennter Liste
-  sPnt:string); //Vorlage Punkt-Vektoren
-const
-  cGeo = 'fE: Observation points file (vector) not available! ';
-var
-  fxVal:tn2Sgl=nil; //Attribute[Kanal][Punkt]
-begin
-  //alle feature-Dateien gleich groß?
-  Gdal.ImportVect(iCrs,sPnt); //Punkt-Vektoren als "vector.csv"
-  FieldTypes(sPnt); //CSVT-Datei mit Feldtypen aus gdal-Info
-  if not FileExists(eeHme+cfVct) then
-    Tools.ErrorOut(2,cGeo+eeHme+cfVct);
-  fxVal:=AttribValues(sFtr); //Attribute an gewählten Punkten
-  PointAppend(fxVal,sFtr); //Feldnamen + Attribute im CSV erweitern
-  FormatAppend(high(fxVal)); //Formatangaben als CSVT erweitern
-  //Gdal.ExportShape(False,iCrs,eeHme+cfFcs+'.csv',sTrg); //als ESRI-Shape speichern
-  Gdal.ExportShape(iCrs,0,eeHme+cfFcs,eeHme+ChangeFileExt(cfFcs,'.shp')); //als ESRI-Shape speichern
-  Tools.HintOut(true,'Points.Attributes: '+cfFcs)
-end;
-
-{ pVA liest die Vorlage "vector.csv", ergänzt numerische Attribute und
-  speichert das Ergebnis als "focus.csv". pVA liest und schreibt einzelne
-  Zeilen im Textformat. pVA übernimmt die Feldnamen aus "sFtr" und die Werte
-  der Tabelle aus "fxVal". Feldnamen und Werte müssen korresponieren. pVA
-  schreibt alle Werte im Float-Format und markiert nicht definierte Werte als
-  "NA". }
-
-procedure tPoints.ValueAppend(
-  fxVal:tn2Sgl; //Werte[Kanal,Punkt] (aus Vorbild)
-  sFtr:string); //Feldnamen = Prozess-Namen als CSV
-const
-  cAtr = 'pVA: Geometry import must contain only a WKT and a DN field!';
-  cCsv = 'pVA: File not available: ';
-  cFcs = 'pVA: File creation failed: ';
-  cRcd = 'pVA: Record-ID not provided by index attributes: ';
-var
-  dCsv:TextFile; //Vektor-Import im CSV-Format
-  dFcs:TextFile; //ergänzte Attribute im CSV-Format
-  iRcd:integer; //Anzahl Punkte=Zeilen
-  sLin:string; //Zeilen-Puffer
-  I:integer;
-begin
-  try
-    AssignFile(dCsv,eeHme+cfVct); //bestehende Geometrie als CSV
-    {$i-} Reset(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+eeHme+cfVct);
-
-    AssignFile(dFcs,eeHme+cfFcs); //Geometrie mit Attributen
-    {$i-} Rewrite(dFcs); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cFcs+eeHme+cfFcs);
-
-    readln(dCsv,sLin); //bestehene Feldnamen
-    if sLin<>'WKT,DN' then Tools.ErrorOut(2,cAtr);
-    writeln(dFcs,'WKT,DN,'+DelSpace(sFtr)); //erweiterte Feldnamen
-    repeat
-      readln(dCsv,sLin); //bestehene Werte
-      iRcd:=rPos(',',sLin); //letztes Komma
-      iRcd:=StrToInt(copy(sLin,iRcd+2,length(sLin)-iRcd-2)); //Record-ID
-      if iRcd>high(fxVal[0]) then Tools.ErrorOut(2,cRcd+IntToStr(iRcd));
-      for I:=0 to high(fxVal) do //alle Attribute
-        if not IsNan(fxVal[I,iRcd])
-          then sLin+=','+FloatToStr(fxVal[I,iRcd])
-          else sLin+=',NA';
-      writeln(dFcs,sLin); //Zeile speichern
-    until eof(dCsv);
-  finally
-    CloseFile(dCsv);
-    Flush(dFcs);
-    CloseFile(dFcs);
-  end; //of try ..
-end;
-
-procedure tPoints.DefaultFormat(iFtr:integer);
-{ pDF erzeugt eine CSVT-Datei für eine WKT-Geometrie mit Attributen. Die "DN"
-  für die Datensätze ist "integer", alle Attribute sind "real". pDF speichert
-  das Ergebnis als "focus.csvt". }
-const
-  cFlt = ',Real(24.15)';
-  cInt = ',Integer(9.0)';
-var
-  sFmt:string;
-  I:integer;
-begin
-  sFmt:='WKT'+cInt; //Geometrie und "DN"
-  for I:=0 to pred(iFtr) do
-    sFmt+=cFlt; //Single-Format für alle Attribute
-  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'csvt'),sFmt);
-end;
-
-{ pPA überträgt die Attribut-Tabelle "index.bit" auf die Geometrie "vector.csv"
-  und speichert das Ergebnis als "focus.csv". "vector.csv" muss existieren und
-  darf keine Attribute enthalten. pPn läd die Polygone einzeln als Textzeile,
-  ergänzt alle Werte aus der Attribut-Tabelle und schreibt die erweiterten
-  Zeilen nach "focus.csv". Zum Schluss erzeugt pPn eine angepasste "focus.csvt"
-  Datei. qGis kann "focus.csv" direkt lesen. }
-
-procedure tPoints.xPolyAttrib;
-const
-  cVal = 'pPA: Number of fields at index table differs from field names!';
-  cVct = 'pPA: Geometry file not found: ';
-var
-  fxVal:tn2Sgl=nil; //Zell-Attribute als Maxtrix
-  sFtr:string=''; //Liste mit Feldnamen aus Index-Header
-begin
-  if not FileExists(eeHme+cfVct) then Tools.ErrorOut(2,cVct+eeHme+cfVct);
-  sFtr:=Header.ReadLine('field names =',eeHme+cfIdx); //Liste mit Feldnamen (CSV)
-  fxVal:=Tools.BitRead(eeHme+cfIdx); //aktuelle Zellindex-Attribute als Matrix
-  if WordCount(sFtr,[','])<>length(fxVal) then Tools.ErrorOut(2,cVal);
-  ValueAppend(fxVal,sFtr); //"vector.csv" mit Attributen als "focus.csv" speichern
-  DefaultFormat(length(fxVal)); //CSVT-Datei für Attribute
-  Tools.HintOut(true,'Points.Attributes: '+cfFcs);
-end;
-
-function tTable.FieldValues(sFld:string):tStringList;
-{ tFV gibt alle Werte aus dem Feld "sFld" in der Tabelle von "vector.csv" als
-  String-Liste zurück. tFV unterstellt, dass "vector.csv" Polygone im WKT-
-  Format enthält. }
-const
-  cCsv = 'Impossible to read file: ';
-  cFld = 'Field name not provided: ';
-  cWkt = 'Geometry must be WKT formatted: ';
-var
-  dCsv:TextFile; //Datei
-  iCol:integer=0; //Spalte für gesuchtes Feld
-  iWkt:integer; //Ende Polygon-Teil
-  sLin:string; //aktuelle Zeile
-  I:integer;
-begin
-  Result:=tStringList.Create;
-  try
-    AssignFile(dCsv,eeHme+cfVct);
-    {$i-} Reset(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+eeHme+cfVct);
-    readln(dCsv,sLin); //Zeile mit Feldnamen
-    if ExtractDelimited(1,sLin,[','])<>'WKT' then
-      Tools.ErrorOut(2,cCsv+eeHme+cWkt);
-    for I:=2 to WordCount(sLin,[',']) do
-      if ExtractDelimited(I,sLin,[','])=sFld then iCol:=pred(I); //Spalte mit Feldnamen ohne "WKT"
-    if iCol<1 then Tools.ErrorOut(2,cFld+sFld);
-    repeat
-      readln(dCsv,sLin); //ab zweite Zeile = Inhalte
-      iWkt:=PosEx('"',sLin,2); //Position zweites Doppelhochkomma
-      Delete(sLin,1,succ(iWkt)); //Polygon-Teil + Komma entfernen
-      Result.Add(trim(ExtractDelimited(iCol,sLin,[',']))); //Bezeichner ohne Leerzeichen
-    until eof(dCsv);
-  finally
-    CloseFile(dCsv);
-  end;
-end;
-
-{ tAI erweitert die Tabelle aus "vector.csv" um das Integer-Feld "sFtr"-ID.
-  Dazu muss die Tabelle als "focus.csv" neu geschrieben werden. tAI unterstellt
-  dass "vector.csv" Polygone im WKT-Format enthält. }
-
-procedure tTable.AddInteger(
-  iaVal:tnInt; //Werte (Liste) Index wie Vektoren
-  sFtr:string); //neue Feldnamen, kommagetrennt
-const
-  cAtr = 'pVA: Geometry import must contain a WKT field!';
-  cCsv = 'pVA: File not available: ';
-  cFcs = 'pVA: File creation failed: ';
-var
-  dCsv:TextFile; //Vektor-Import im CSV-Format
-  dFcs:TextFile; //ergänzte Attribute im CSV-Format
-  iCnt:integer=0; //Zeilen-ID (ab Null)
-  sLin:string; //Zeilen-Puffer
-begin
-  try
-    AssignFile(dCsv,eeHme+cfVct); //bestehende Geometrie als CSV
-    {$i-} Reset(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+eeHme+cfVct);
-
-    AssignFile(dFcs,eeHme+cfFcs); //Geometrie mit Attributen
-    {$i-} Rewrite(dFcs); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cFcs+eeHme+cfFcs);
-
-    readln(dCsv,sLin); //bestehene Feldnamen
-    if LeftStr(sLin,3)<>'WKT' then Tools.ErrorOut(2,cAtr);
-    if sFtr[1]<>',' then sFtr:=','+sFtr; //führendes Komma
-    writeln(dFcs,sLin+DelSpace(sFtr)); //erweiterte Feldnamen
-    repeat
-      readln(dCsv,sLin); //bestehene Werte
-      //if not IsNan(fxVal[I,iRcd]) .. sLin+='NA'
-      sLin+=','+FloatToStr(iaVal[iCnt]); //Wert ergänzen
-      writeln(dFcs,sLin); //Zeile speichern
-      inc(iCnt) //Zeilen-Index
-    until eof(dCsv);
-  finally
-    CloseFile(dCsv);
-    Flush(dFcs);
-    CloseFile(dFcs);
-  end; //of try ..
-  Tools.HintOut(true,'Table.AddInteger: '+cfFcs);
-end;
-
-procedure tTable.AddFormat(sFmt:string);
-{ tAF erweitert die CSVT-Tabelle um den Eintrag "sFmt". "vector.csvt" muss
-  existieren. tAF schreibt nach "focus.csvt". }
-const
-  cVct = 'Vector format definition vector.CSVT needed!';
-begin
-  if not FileExists(ChangeFileExt(eeHme+cfVct,'.csvt')) then
-    Tools.ErrorOut(2,cVct+ChangeFileExt(eeHme+cfVct,'.csvt'));
-  if sFmt[1]<>',' then sFmt:=','+sFmt;
-  sFmt:=Tools.LineRead(ChangeFileExt(eeHme+cfVct,'.csvt'))+sFmt;
-  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),sFmt);
-end;
-
-function tTable.AddThema(sFld:string):tStringList;
-{ tAT erzeugt aus dem Feld "sFld" in "vector.csv" ein Array mit Klassen-IDs für
-  die Inhalte von "sFld", ergänzt damit die Tabelle und speichert das Ergebnis
-  als "focus.csv". }
-{ tAT betrachtet die Inhalte von "sFld" als Strings und vergibt für jedes
-  Muster eine Klassen-ID. Dazu kopiert tAT die ursprüngliche Liste, sortiert
-  sie und reduziert gleiche Einträge bis von jedem Muster nur noch ein Beispiel
-  übrig bleibt. tAT verwendet den Index der reduzierten Liste als Klassen-ID,
-  trägt die IDs in ein neues Integer-Array ein und ergänzt das Array als neues
-  Feld für "focus.csv". tAT erweitert auch die CSVT-Datei und übernimmt die
-  PRJ-Datei aus "vector.prj" }
-var
-  iaMap:tnInt=nil; //Klassen-IDs
-  slFld:tStringList=nil; //Klassen-Bezeichner, alle Polygone
-  I:integer;
-begin
-  Result:=tStringList.Create; //klassifizierte Bezeichner
-  try
-    slFld:=FieldValues(sFld); //Klassen-Bezeichner, alle Polygone
-    Result.AddStrings(slFld); //Liste kopieren
-    Result.Add(#32); //leere Klasse für Rückweisung, ID=0
-    Result.Sort; //alphabetisch
-    for I:=pred(Result.Count) downto 1 do
-      if Result[I]=Result[pred(I)] then Result.Delete(I); //nur verschiedene Bezeichner
-    iaMap:=Tools.InitInteger(slFld.Count,0); //Klassen-IDs als Array
-    for I:=0 to pred(slFld.Count) do
-      iaMap[I]:=Result.IndexOf(slFld[I]); //Index des Bezeichners = Klassen-ID
-    Table.AddInteger(iaMap,sFld+'-ID'); //Werte an Tabelle anhängen
-    Table.AddFormat('Integer(10)'); //Feld-Format an CSVT anhängen
-    Tools.CopyFile(ChangeFileExt(eeHme+cfVct,'.prj'),
-      eeHme+ChangeFileExt(cfFcs,'.prj')); //Projektion als WKS
-    //Result.Count darf $FF nicht überschreiten
-  finally
-    slFld.Free;
-  end;
-end;
-
-{ cCI übernimmt den EPSG-Code als Integer aus dem Text von "gdalsrsinfo" }
-
-function tCover.CrsInfo(
-  sImg:string): //Bidname
-  integer; //EPSG-Code ODER Null
-const
-  cCrs = 'cCI: No CRS code found in: ';
-var
-  slInf:tStringList=nil;
-  I:integer;
-begin
-  Result:=0; //Vorgabe = undefiniert
-  try
-    slInf:=TStringList.Create;
-    slInf.AddText(Gdal.SrsInfo(sImg)); //GDAL-Info übernehmen
-    for I:=0 to pred(slInf.Count) do
-      if LeftStr(slInf[I],4)='EPSG' then
-      begin
-        Result:=StrToInt(copy(slInf[I],6,length(slInf[I])-5));
-        break
-      end;
-  finally
-    slInf.Free;
-  end;
-end;
-
-{ cVF gibt das Auswahl-Rechnteck und die Projektion einer Vektor-Datei zurück.
-  cVF ruft dazu ogrinfo auf, sucht die passenden Stichworte und konvertiert den
-  Inhalt. Die Koordinaten beziehen sich auf das CRS der Vektoren. }
-
-function tCover.VectorFrame(sFrm:string):trFrm; //Dateiname: Auswahlrahmen
-const
-  cFrm = 'cVF: Unable to open bounding geometry: ';
-var
-  sLin:string; //Zwischenlager
-  slInf:tStringList=nil; //Vektor-Info
-  I:integer;
-begin
-  Result:=crFrm; //Vorgabe = unmöglich
-  //if length(sFrm)<1 then exit; //kein Aufruf
-  if FileExists(sFrm)=False then Tools.ErrorOut(2,cFrm+sFrm);
-  try
-    slInf:=tStringList.Create;
-    slInf.AddText(Gdal.OgrInfo(sFrm)); //Info-Text
-    for I:=0 to pred(slInf.Count) do
-    begin
-      if LeftStr(slInf[I],13)='    ID["EPSG"' then
-        Result.Epg:=StrToInt(copy(slInf[I],15,length(slInf[I])-16)) else
-      if LeftStr(slInf[I],4)='    ' then continue; //nur linksbündige Einträge
-
-      if LeftStr(slInf[I],7)='Extent:' then
-      begin
-        sLin:=ExtractDelimited(2,SlInf[I],['(',')']);
-        Result.Lft:=StrToFloat(ExtractDelimited(1,sLin,[',']));
-        Result.Btm:=StrToFloat(ExtractDelimited(2,sLin,[',']));
-        sLin:=ExtractDelimited(4,SlInf[I],['(',')']);
-        Result.Rgt:=StrToFloat(ExtractDelimited(1,sLin,[',']));
-        Result.Top:=StrToFloat(ExtractDelimited(2,sLin,[',']));
-      end else
-      if (LeftStr(slInf[I],7)='PROJCRS')
-      or (LeftStr(slInf[I],7)='GEOGCRS') then
-        Result.Crs:=ExtractWord(2,slInf[I],['"']) else
-    end;
-  finally
-    slInf.Free;
-  end;
-end;
-
-function tCover.MergeFrames(
-  slImg:tStringList): //Bildnamen
-  trFrm; //Rechteck + Projektion
-{ cMF gibt einen Rahmen zurück, der alle Bilder in "slImg" aufnimmt. cMF
-  verwendet dazu die Header-Information der einzelnen Kanäle.
-  ==> Das Koordinatensystem aller Bilder muss gleich sein. }
-const
-  cCrs = 'cMF: Inport images must share coordinate system!';
-  cPix = 'cMF: Image merge needs identical pixel size!';
-var
-  I:integer;
-  rHdr:trHdr; //Metadaten Bilder
-  sCrs:string=''; //Bezeichner des Koordinatensystems aus Header
-begin
-  Result:=crFrm; //Vorgabe
-  for I:=0 to pred(slImg.Count) do
-  begin
-    Header.Read(rHdr,slImg[I]);
-    if I=0 then
-      sCrs:=ExtractWord(2,rHdr.Cys,['"']) //CRS-Zusammenfassung
-    else if ExtractWord(2,rHdr.Cys,['"'])<>sCrs then
-      Tools.ErrorOut(2,cCrs);
-    with Result do
-    begin
-      Lft:=min(rHdr.Lon,Lft);
-      Top:=max(rHdr.Lat,Top);
-      Rgt:=max(rHdr.Lon+rHdr.Scn*rHdr.Pix,Rgt);
-      Btm:=min(rHdr.Lat-rHdr.Lin*rHdr.Pix,Btm);
-    end;
-  end;
+ //iHit>0!
+ Result:=Tools.InitSingle(min(iHit,high(faFtr)),0); //Stichproben als Liste
+ fPrt:=length(faFtr)/length(Result); //Stichproben-Distanz
+ fSum:=0; //Vorgabe
+ iHit:=0; //Vorgabe
+ for Z:=1 to high(Result) do //ohne Zone Null
+ begin
+   iIdx:=trunc(fPrt*Z); //regelmäßige Abstände
+   if isNan(faFtr[iIdx]) then continue; //nur definierte Punkte
+   Result[iHit]:=faFtr[iIdx]; //Wert am Stichpunkt
+   fSum+=faFtr[iIdx]; //Summe aller Werte
+   inc(iHit) //gültige Stichproben
+ end;
+ SetLength(Result,iHit); //NoData entfernen
+ //Reduce.QuickSort_(Result,iHit);
+ QuickSort(Result,iHit);
 end;
 
 { cPI gibt True zurück, wenn der Punkt "pPnt" im Polygon "pPly" liegt. Dazu
@@ -1051,7 +221,7 @@ var
   slInf:tStringList=nil;
   I:integer;
 begin
-  if RightStr(sArc,14)<>'_02_T1_MTL.txt' then Tools.ErrorOut(2,cArc);
+  if RightStr(sArc,14)<>'_02_T1_MTL.txt' then Tools.ErrorOut(3,cArc);
   SetLength(Result,5); //geschlossenes Polygon
   try
     slInf:=tStringList.Create;
@@ -1061,7 +231,7 @@ begin
       if slInf[I]='  GROUP = PROJECTION_ATTRIBUTES' then
       begin
         if not (slInf[I+12]='    CORNER_UL_LAT_PRODUCT') then
-          Tools.ErrorOut(2,cGeo);
+          Tools.ErrorOut(3,cGeo);
         Result[0].Lat:=StrToFloat(copy(slInf[I+12],29,8));
         Result[0].Lon:=StrToFloat(copy(slInf[I+13],29,8));
         Result[1].Lat:=StrToFloat(copy(slInf[I+14],29,8));
@@ -1081,323 +251,633 @@ begin
   if not bHit then SetLength(Result,0); //nil zurückgeben
 end;
 
-{ cCF setzt in "sImg" alle Bildpixel außerhalb des Polygons "sFrm" auf NoData.
-  cCF projiziert den Rahmen "sFrm" auf das CRS von "sImg", erzeugt eine Pixel-
-  Maske [0,1] mit dem Rahmen und setzt alle Pixel in allen Layern auf NoData
-  die außerhalb des Rahmens liegen. }
+{ cFH überträgt die Koordinaten aus einem Frame in einen ENVI-Header.
+  ==> CFH ÜBERPRÜFT NICHT DAS CRS }
 
-procedure tCover.ClipToShape(
-  sFrm:string; //Geometrie (ROI)
-  sImg:string); //Vorbild WIRD VERÄNDERT!
+function tCover._FrameHeader_(
+  rFrm:trFrm; //Rahmen (aus Polygon)
+  sImg:string): //Vorbild (Teil)
+  trHdr; //Metadaten innerhalb des Frames
 var
-  fxImg:tn3Sgl=nil; //Vorbild (multiband)
-  fxMsk:Tn2Sgl=nil; //Maske für ROI
-  iEpg:integer; //EPSG-Code Vorbild
-  rHdr:trHdr; //Metadaten
-  B,X,Y:integer;
+  sMap:string; //ENVI Map-Info
+  I:integer;
 begin
-  iEpg:=Cover.CrsInfo(sImg); //Projektion der Bilddaten
-  Gdal.ImportVect(iEpg,sFrm); //Rahmen projizieren + als CSV speichern
-  Header.Read(rHdr,sImg); //Bounding Box des Vorbilds
-  fxMsk:=Tools.Init2Single(rHdr.Lin,rHdr.Scn,0); //Maske mit Vorgabe = Null
-  Image.WriteBand(fxMsk,0,eeHme+cfMsk); //als "mask" für GDAL speichern
-  Header.WriteScalar(rHdr,eeHme+cfMsk);
-  Gdal.Rasterize(1,'',eeHme+cfMsk,eeHme+cfVct); //ROI als (1) einbrennen
-
-  fxMsk:=Image.ReadBand(0,rHdr,eeHme+cfMsk); //Maske [0,1]
-  Header.Read(rHdr,sImg); //Maske hat Header verändert
-  fxImg:=Image.Read(rHdr,sImg); //Maske [0,1]
-  for Y:=0 to pred(rHdr.Lin) do
-    for X:=0 to pred(rHdr.Scn) do
-      if fxMsk[Y,X]<1 then //Pixel innerhalb des ROI
-        for B:=0 to pred(rHdr.Stk) do
-          fxImg[B,Y,X]:=NaN;
-  Image.WriteMulti(fxImg,sImg); //Header bleibt gleich
-end;
-
-// Ablauf-Punkte zwischen primären Hydrologie-Zonen
-
-{ lDP bestimmt zu jeder primären Zone aus "micro" den Abflusspunkt und schreibt
-  ihn nach "runoff.bit" }
-{ lDP unterstellt, dass jede Zone in genau eine andere Zone entwässert. Die
-  Verknüpfung (Abfluss) der Zonen übernimmt lDP aus dem ersten Feld in
-  "runoff.bit". lDP sucht im Höhenmodell "compile" nach dem niedrigsten Punkt
-  zwischen je zwei verknüpften Zonen und übernimmt die Koordinaten als "iaLat"
-  und "iaLon". lDP konvertiert die erfassten Pixel-Koordinaten in das CRS der
-  Zonen aus "micro" und speichert sie als zweites und drittes Feld in
-  "runoff.bit". }
-{ ==> LDP GREIFT AUSSCHLIEẞLICH AUF DATEIEN IM ARBEITSVERZEICHNIS ZU. }
-
-procedure tLines.xDrainPoints();
-var
-  faLat:tnSgl=nil; //Latitude Überlauf-Punkt
-  faLon:tnSgl=nil; //Longitude Überlauf-Punkt
-  faMax:tnSgl=nil; //aktuell niedrigster Überlauf
-  fxElv:tn2Sgl=nil; //Höhendaten
-  iaLnk:tnInt=nil; //Verknüpfung der primären Zonen
-  ixIdx:tn2Int=nil; //primäre Zonen
-
-procedure lLink(
-  const iIdx:integer;
-  const iLat,iLon:integer;
-  const iVrt,iHrz:integer;
-  const fLat,fLon:single);
-begin
-  if (iIdx>0) and (iaLnk[iIdx]=ixIdx[iVrt,iHrz]) then
-    if max(fxElv[iLat,iLon],fxElv[iVrt,iHrz])<faMax[iIdx] then
-    begin
-      faLat[iIdx]:=fLat; //Mitte
-      faLon[iIdx]:=fLon; //rechts
-      faMax[iIdx]:=max(fxElv[iLat,iLon],fxElv[iVrt,iHrz]);
-    end;
-end;
-
-const
-  fMax:single=MaxInt;
-var
-  iLin,iScn:integer; //höchste Zeilen/Spalten-ID
-  rHdr:trHdr; //Metadaten
-  X,Y,Z:integer;
-begin
-  iaLnk:=tnInt(Tools.BitExtract(0,eeHme+cfRnf)); //Überlauf der elementaren Zonen als IDs
-  faLat:=Tools.InitSingle(length(iaLnk),0);
-  faLon:=Tools.InitSingle(length(iaLnk),0);
-  Header.Read(rHdr,eeHme+cfMic); //Metadaten aus Zonen
-  //rHdr.Cnt=high(iaLnk)?
-  ixIdx:=tn2Int(Image.ReadBand(0,rHdr,eeHme+cfMic)); //elementare Zonen
-  fxElv:=Image.ReadBand(0,rHdr,eeHme+cfCpl); //Höhendaten lesen
-  faMax:=Tools.InitSingle(length(iaLnk),dWord(fMax));
-
-  iLin:=high(ixIdx);
-  iScn:=high(ixIdx[0]);
-  for Y:=0 to high(ixIdx) do
-    for X:=0 to high(ixIdx[0]) do
-    begin
-      if X>0 then lLink(ixIdx[Y,X],Y,X,Y,pred(X),    Y+0.5,X); //nach links
-      if Y>0 then lLink(ixIdx[Y,X],Y,X,pred(Y),X,    Y,X+0.5); //oben
-      if X<iScn then lLink(ixIdx[Y,X],Y,X,Y,succ(X), Y+0.5,succ(X)); //rechts
-      if Y<iLin then lLink(ixIdx[Y,X],Y,X,succ(Y),X, succ(Y),X+0.5); //unten
-    end;
-
-  for Z:=1 to high(iaLnk) do
-  begin
-    faLat[Z]:=rHdr.Lat-faLat[Z]*rHdr.Pix;
-    faLon[Z]:=rHdr.Lon+faLon[Z]*rHdr.Pix;
-  end;
-
-  Tools.BitInsert(faLat,1,eeHme+cfRnf);
-  Tools.BitInsert(faLon,2,eeHme+cfRnf);
-end;
-
-{ lLM verbindet primäre Zonen aus der Liste "runoff.bit" durch Linien und
-  speichert das Ergebis als "vector.csv". Quelle und Ziel stehen als Zonen-IDs
-  im ersten Feld von "runoff.bit", die Koordinaten des Abfluss-Punkts [Lon,Lat]
-  im zweiten und dritten Feld. }
-{ lLM zeichnet keine Linien innerhalb von Ebenen (Zonen bis zum Index "iPln").
-  lLM übernimmt die Beschribung des CRS für die ".PRJ" Datei aus den Metadaten
-  von "micro". }
-
-procedure tLines.xDrainLines(iPln:integer); //Anzahl Ebenen
-const
-  cCsv = 'Impossible to read file: ';
-var
-  dCsv:TextFile; //Datei
-  faLat:tnSgl=nil; //Latitude Überlauf-Punkt
-  faLon:tnSgl=nil; //Longitude Überlauf-Punkt
-  iaLnk:tnInt=nil; //Verknüpfung der primären Zonen
-  iLnk:integer; //verknüpfte Zone
-  rHdr:trHdr; //Metadaten
-  sLnk:string; //Zwischenlager
-  Z:integer;
-begin
-  //iPln>=0?
-  iaLnk:=tnInt(Tools.BitExtract(0,eeHme+cfRnf)); //Überlauf der elementaren Zonen als IDs
-  faLat:=Tools.BitExtract(1,eeHme+cfRnf); //Überlauf der elementaren Zonen als IDs
-  faLon:=Tools.BitExtract(2,eeHme+cfRnf); //Überlauf der elementaren Zonen als IDs
-  Header.Read(rHdr,eeHme+cfMic); //Metadaten aus Zonen
-{ TODO: "DrainLines" muss eine PRJ Datei erzeugen, dazu braucht es einen CRS-
-        String. Reicht "Cover.CrsInfo"?}
-  try
-    AssignFile(dCsv,eeHme+cfVct);
-    {$i-} Rewrite(dCsv); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cCsv+cfVct);
-    writeln(dCsv,'WKT,id');
-    for Z:=1 to high(iaLnk) do //alle Überlauf-Punkte
-      if iaLnk[Z]>iPln then //nur zu definierten Zonen ohne Ebenen
-      begin
-        iLnk:=iaLnk[Z];
-        sLnk:='"MULTILINESTRING (('; //Kopf
-        sLnk+=FloatToStr(faLon[Z])+#32; //von..
-        sLnk+=FloatToStr(faLat[Z])+',';
-        sLnk+=FloatToStr(faLon[iLnk])+#32; //nach..
-        sLnk+=FloatToStr(faLat[iLnk])+'))","';
-        sLnk+=IntToStr(Z)+'"';
-        writeln(dCsv,sLnk);
-      end;
-  finally
-    Flush(dCsv);
-    CloseFile(dCsv);
-  end; //of try ..
-  Tools.TextOut(ChangeFileExt(eeHme+cfVct,'.prj'),rHdr.Cys);
-end;
-
-{ cIt gibt die Schnittmenge aus zwei Rahmen zurück }
-
-function tCover.Intersect(
-  rImg:trFrm; //Auswahl-Rahmen
-  rRoi:trFrm): //Vorbild-Rahmen
-  trFrm; //gemeinsamer Rahmen
-const
-  cEpg = 'cCF: Coordinate systems must be equal!';
-  cFrm = 'cCF: No overlap between selected frame an image!';
-begin
-  if rImg.Epg<>rRoi.Epg then Tools.ErrorOut(2,cEpg);
-
-  Result.Crs:=rRoi.Crs;
-  Result.Epg:=rRoi.Epg;
-  Result.Lft:=max(rImg.Lft,rRoi.Lft); //gemeinsame Abdeckung
-  Result.Top:=min(rImg.Top,rRoi.Top);
-  Result.Rgt:=min(rImg.Rgt,rRoi.Rgt);
-  Result.Btm:=max(rImg.Btm,rRoi.Btm);
+  Header.Read(Result,sImg);
   with Result do
   begin
-    if Lft>Rgt then Rgt:=Lft;
-    if Top<Btm then Btm:=Top;
+    Lat:=trunc(rFrm.Top/Pix)*Pix; //nach links runden
+    Lon:=trunc(rFrm.Lft/Pix)*Pix+Pix; //nach oben runden
+    sMap:=ExtractWord(1,Map,[',']);
+    for I:=2 to 3 do
+      sMap+=', '+ExtractWord(I,Map,[',']);
+    sMap+=', '+FloatToStr(Lon);
+    sMap+=', '+FloatToStr(Lat);
+    for I:=6 to 10 do
+      sMap+=', '+ExtractWord(I,Map,[',']);
+    Map:=sMap;
+    {UTM, 1, 1, 594810, 5903730, 30, 30, 32, North,WGS-84}
+    Lin:=round((rFrm.Top-rFrm.Btm)/Pix);
+    Scn:=round((rFrm.Rgt-rFrm.Lft)/Pix);
+    Prd:=Stk;
+    Stk:=0; //neue Datei erzeugen
   end;
+  //Header.Write(Result,'compare',eeHme+'temp.hdr'); KONTROLLE
 end;
 
-function tCover.ReadFrame(sVct:string):trFrm;
-var
-  fLat,fLon:double; //Koordinaten als Zahl
-  iHig,iLow:integer; //Klammern für Koordinaten
-  iPnt:integer=0; //Anzahl Punkte
-  sCsv:string=''; //CSV-Inhalt
-  sPly:string=''; //nur Koordinaten
-  sPnt:string=''; //Punkt-Koordinaten als Text
-  P:integer;
-begin
-  Result:=crFrm; //Vorgane = unmöglich
-  Result.Epg:=Cover.CrsInfo(sVct);
-  //Result.Crs:= CRS-Info erweitern
-  sCsv:=Tools._eTextRead(sVct); //gesamten Text
-  sPly:=ExtractWord(2,sCsv,['"']); //erstes Polygon
-  iHig:=pos(')',sPly); //erste Klamer ")"
-  iLow:=rpos('(',sPly); //letzte Klammer "("
-  sPly:=copy(sPly,succ(iLow),pred(iHig-iLow)); //nur Polygon-Inhalt}
-  iPnt:=WordCount(sPly,[',']); //Punkte mit je zwei Koordinaten
-  for P:=1 to iPnt do
-  begin
-    sPnt:=ExtractWord(P,sPly,[',']); //zwei Koordinaten als Text
-    fLat:=StrToFloat(ExtractWord(2,sPnt,[#32]));
-    fLon:=StrToFloat(ExtractWord(1,sPnt,[#32]));
-    Result.Lft:=min(fLon,Result.Lft); //äußere Grenze
-    Result.Top:=max(fLat,Result.Top);
-    Result.Rgt:=max(fLon,Result.Rgt);
-    Result.Btm:=min(fLat,Result.Btm);
-  end;
-end;
+{ fPA gibt die Werte einzelner Pixel aus dem Kanal "sBnd" zurück. Die Position
+  der Pixel muss als Pixel-Index in "iaPix" übergeben werden. }
 
-// Liste aus Koordinaten als Polygon.csv speihern
-
-procedure tCover.WriteFrame(
-  rFrm:trFrm; //Frame
-  sPrj:string); //Name passende PRJ-Datei
+function tPoints.PointAttributes(
+  iaPix:tnInt; //Indices ausgewählter Pixel
+  var rHdr:trHdr; //Metadaten
+  sBnd:string): //Bild-Name
+  tnSgl; //Werte der ausgewählten Pixel
 const
-  cFld = 'WKT,id'; //Feldnamen
-  cFmt = 'WKT,Integer64(10)'; //Format
+  cPix = 'fPA: List of pixel indices must be provided!';
 var
-  sRes:string='';
+  fxBnd:tn2Sgl=nil; //aktueller Kanal
+  iCnt:integer; //Anzahl Pixel
+  I:integer;
 begin
-  sRes:=cFld+#10; //Kopfzeile
-  sRes+='"MULTIPOLYGON ((('+
-    FloatToStr(rFrm.Lft)+#32+FloatToStr(rFrm.Top)+','+
-    FloatToStr(rFrm.Rgt)+#32+FloatToStr(rFrm.Top)+','+
-    FloatToStr(rFrm.Rgt)+#32+FloatToStr(rFrm.Btm)+','+
-    FloatToStr(rFrm.Lft)+#32+FloatToStr(rFrm.Btm)+','+
-    FloatToStr(rFrm.Lft)+#32+FloatToStr(rFrm.Top)+')))",1';
-  Tools.TextOut(eeHme+cfFcs,sRes); //als Datei "focus.csv"
-  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),cFmt); //Formate
-  if ExtractFileExt(sPrj)='.prj'
-    then Tools.CopyFile(sPrj,eeHme+ChangeFileExt(cfFcs,'.prj')) //Vorbild=Datei
-    else Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.prj'),ccPrj); //Geographisch
+  if iaPix=nil then Tools.ErrorOut(3,cPix);
+  Result:=Tools.InitSingle(length(iaPix),dWord(Nan)); //Vorgabe
+  iCnt:=rHdr.Scn*rHdr.Lin; //Anzahl Pixel
+  fxBnd:=Image.ReadBand(0,rHdr,sBnd); //Bildkanal
+  for I:=0 to high(iaPix) do
+    if (iaPix[I]>=0) and (iaPix[I]<iCnt) then
+      with rHdr do
+        Result[I]:=fxBnd[iaPix[I] div Scn,iaPix[I] mod Scn];
 end;
 
-{ lLF übergibt die WKS-Koordinaten aus der Archiv-Liste als Bounding-Box }
-
-function tLines.LandsatFrame(
-  sWkt:string): //Polygon im WKT-Format (aus Archiv-Liste)
-  trFrm; //Bounding-Box in Projektion aus "iEpg"
-const
-  cFld = 'WKT,id'+#10; //Feldnamen
-  cFmt = 'WKT,Integer64(10)'; //Format
+function _PointAttributes(
+  iaPix:tnInt; //Indices ausgewählter Pixel
+  var rHdr:trHdr; //Metadaten
+  sBnd:string): //Bild-Name
+  tnSgl; //Werte der ausgewählten Pixel
+{ fPA gibt die Werte einzelner Pixel aus dem Kanal "sBnd" zurück. Die Position
+  der Pixel wird als Pixel-Indices in "iaPix" übergeben. }
 var
-  fLat,fLon:double; //Punkt-Koordinaten als Zahl
-  iHig,iLow:integer; //Position innerste Klammern
-  iPnt:integer; //Anzahl Punkte im Polygon
-  sPly:string; //erstes Polygon im CSV-Text
-  sPnt:string; //Punkt-Koordinaten als Text
-  P:integer;
+  fxBnd:tn2Sgl=nil; //Kanal
+  I:integer;
 begin
-  Result:=crFrm; //Vorgabe=unmöglich
-  Result.Crs:='WGS 84'; //geographisch
-  Result.Epg:=4326; //geographisch
-  sPly:=ExtractWord(1,sWkt,['"']); //erstes Polygon
-  iHig:=pos(')',sPly); //erste Klamer ")"
-  iLow:=rpos('(',sPly); //letzte Klammer "("
-  sPly:=copy(sPly,succ(iLow),pred(iHig-iLow)); //nur Koordinaten
-  iPnt:=WordCount(sPly,[',']); //Punkte mit je zwei Koordinaten
-  for P:=1 to iPnt do
-  begin
-    sPnt:=ExtractWord(P,sPly,[',']); //zwei Koordinaten als Text
-    fLat:=StrToFloat(ExtractWord(2,sPnt,[#32]));
-    fLon:=StrToFloat(ExtractWord(1,sPnt,[#32]));
-    Result.Lft:=min(fLon,Result.Lft); //äußere Grenze
-    Result.Top:=max(fLat,Result.Top);
-    Result.Rgt:=max(fLon,Result.Rgt);
-    Result.Btm:=min(fLat,Result.Btm);
+  fxBnd:=Image.ReadBand(0,rHdr,sBnd); //Bildkanal
+  Result:=Tools.InitSingle(length(iaPix),dWord(Nan)); //Vorgabe
+  for I:=0 to high(iaPix) do
+    with rHdr do
+      Result[I]:=fxBnd[iaPix[I] div Scn,iaPix[I] mod Scn];
+end;
+
+{ fGI liest projizierte Koordinaten von Vektor-Punkten im WKT-Format aus einer
+  CSV Datei und transformiert sie in Pixel-Indices. Für Punkte außerhalb der
+  Bildfläche gibt fGI (-1) zurück. Der Pixel-Ursprung ist links oben. }
+
+function tPoints.GetIndex(
+  var rHdr:trHdr): //Metadaten Vorbild
+  tnInt; //Pixel-Indices[Vektor-Punkt]
+const
+  cCsv = 'Impossible to read file: ';
+  cPnt = 'Not a WKT point format: ';
+  cWkt = 'Geometry must be WKT formatted: ';
+var
+  dCsv:TextFile; //Datei
+  fLat,fLon:single; //aktuelle Koordinaten (Ursprung links unten)
+  iHrz,iVrt:integer; //Pixel-Koordinaten (Ursprung links oben)
+  nRes:integer=0; //Dimension Pixelindices
+  sLin:string; //aktuelle Zeile
+begin
+  SetLength(Result,$FF); //nicht definiert
+  try
+    AssignFile(dCsv,eeHme+cfVct);
+    {$i-} Reset(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+eeHme+cfVct);
+    readln(dCsv,sLin); //Zeile mit Feldnamen
+    if ExtractDelimited(1,sLin,[','])<>'WKT' then
+      Tools.ErrorOut(3,cCsv+eeHme+cWkt);
+    repeat
+      readln(dCsv,sLin); //Zeile mit Koordinaten (und Attributen)
+      sLin:=ExtractDelimited(1,sLin,[',']); //WKT-Geometrie
+      if (pos('POINT Z',sLin)>0) or (pos('POINT',sLin)>0) then //nur Punkte
+      begin
+        sLin:=ExtractDelimited(2,sLin,['(',')']); //Substring in Klammern
+        fLon:=StrToFloat(ExtractDelimited(1,sLin,[#32])); //1. Substring in Blankes
+        fLat:=StrToFloat(ExtractDelimited(2,sLin,[#32])); //2. Substring in Blankes
+        iHrz:=trunc((fLon-rHdr.Lon)/rHdr.Pix); //Pixel-Koordinaten
+        iVrt:=trunc((rHdr.Lat-fLat)/rHdr.Pix);
+        if (iHrz<0) or (iHrz>pred(rHdr.Scn))
+        or (iVrt<0) or (iVrt>pred(rHdr.Lin))
+          then Result[nRes]:=-1 //Pixel außerhhalb der Bildfläche
+          else Result[nRes]:=iVrt*rHdr.Scn+iHrz; //Pixel-Index
+        inc(nRes); //fortlaufend zählen
+        if nRes>=length(Result) then
+          SetLength(Result,nRes*2);
+      end
+      else Tools.ErrorOut(3,cPnt+eeHme+cfVct);
+    until eof(dCsv);
+    SetLength(Result,nRes);
+  finally
+    CloseFile(dCsv);
+  end; //of try ..
+end;
+
+procedure tPoints.FieldTypes(sVct:string); //Geometrie im CSV-Format
+{ pFT erzeugt eine CSVT-Datei mit Formatangaben für die Attribute der Vektor-
+  Datei "sVct". pFT übernimmt aus der CSV-Datei die Feldnamen (erste Zeile) des
+  Originals und verknüpft sie mit den Format-Angaben aus dem "ogrinfo"-Prozess
+  des Originals. }
+const
+  cWkt = 'CSV vector geometry must use WKT format! ';
+var
+  iBrk:integer; //Grenze Feldname-Dimension
+  iFld:integer; //Anzahl felder ohne "WKT"
+  slIfo:tStringList=nil; //Container für OgrInfo
+  sFld:string; //Feldname mit Dimension
+  sTyp:string=''; //Format-String
+  I:integer;
+begin
+  sFld:=Tools.LineRead(eeHme+cfVct); //erste Zeile der CSV-Version
+  if LeftStr(sFld,3)<>'WKT' then Tools.ErrorOut(3,cWkt+eeHme+cfVct);
+  iFld:=pred(WordCount(sFld,[','])); //Anzahl Felder ohne "WKT"
+  try
+    slIfo:=tStringList.Create;
+    slIfo.AddText(Gdal.OgrInfo(sVct)); //Info als Stream
+    for I:=pred(slIfo.Count) downto slIfo.Count-iFld do //nur Feldnamen
+    begin
+      iBrk:=pos(': ',slIfo[I])+2; //Grenze Name: Format
+      if iBrk>2
+        then sFld:=copy(slIfo[I],iBrk,$FF) //nur Format
+        else sFld:=''; //Vorgabe = String
+      sTyp:=','+sFld+sTyp;
+    end;
+  finally
+    slIfo.Free;
   end;
 end;
 
-{ cVC gibt Projektion und Bounding-Box der Geometrie "sPly" zurück. Mit "iEpg"
-  <> Null transformiert cVC die Koordinaten nach "iEpg". Dazu erzeugt cVC eine
-  CSV-Datei im neuen Koordinatensystem und übernimmt ihre Werte. }
-
-function tCover.VectorCrsFrame(
-  iEpg:integer; //Ziel-Projekton als EPSG-Code, Null für unverändert
-  sPly:string): //Geometrie-Quelle
-  trFrm; //Bounding-Box + CRS
+procedure tPoints._RandomPoints_(
+  iCnt:integer; //Anzahl zufälliger Punkte
+  sImg:string); //Bilddaten für Bounding Box
+{ pRP erzeugt "iCnt" Vektor-Punkte im CSV-Format, die zufällig über die
+  Bounding-Box des Bilds "sImg" verteilt sind. Die Koordinaten werden im WKT-
+  Format gespeichert, einziges Attribut ist eine fortlaufende ID. }
+const
+  cCrt = 'pRP: Error while creating: ';
+  cFmt = 'WKT,Integer(12)';
+var
+  dVct:TextFile; //Vektor-Punkte im CSV-Format
+  fLat,fLon:double; //zufällige Koordinaten
+  iHrz,iVrt:integer; //Bildgröße in Metern
+  rHdr:trHdr; //Metadaten
+  I:integer;
 begin
-  if iEpg<>0 then
-  begin
-    Gdal.ImportVect(iEpg,sPly); //Vektor umprojizieren und als "vector.csv" speichern
-    Result:=VectorFrame(eeHme+cfVct) //Rahmen aus umprojizierten Vektoren
-  end
-  else Result:=VectorFrame(sPly) //Geometrie unverändert übernehmen
+  Header.Read(rHdr,sImg);
+  iHrz:=trunc(rHdr.Scn*rHdr.Pix); //Bildbreite in Metern
+  iVrt:=trunc(rHdr.Lin*rHdr.Pix); //Bildhöhe in Metern
+  try
+    AssignFile(dVct,eeHme+cfVct); //Punkte mit ergänzten Attributen
+    {$i-} Rewrite(dVct); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCrt+eeHme+cfVct);
+    writeln(dVct,'WKT,ID'); //Feldnamen
+    Randomize;
+    for I:=1 to iCnt do
+    begin
+      fLat:=rHdr.Lat-random(iVrt);
+      fLon:=rHdr.Lon+random(iHrz);
+      writeln(dVct,'"POINT ('+FloatToStr(fLon)+#32+FloatToStr(fLat)+')",'+
+        IntToStr(I));
+    end;
+  finally
+    Flush(dVct);
+    CloseFile(dVct);
+  end; //of try ..
+  Tools.TextOut(eeHme+ChangeFileExt(cfVct,'.csvt'),cFmt) //Format der Felder
 end;
 
-{ cRt transformiert die Bounding-Boxen "rImg" und "rRoi" in das System "iEpg",
-  bildet neue Bounding-Boxen in diesem System und gibt den Verschnitt der
-  transformierten Boxen zurück. Diese Reihenfolge ist notwendig um verschieden
-  projizierte Ausschntt verlustlos zu kombinieren
-  ==> CRT UNTERSTELLT, DASS "RIMG" UND "RROI" GEOGRAPHISCH SIND }
+function tPoints.AttribValues(sFtr:string):tn2Sgl; {lokale Bilder: Attribut-Tabelle}
+{ pAV erzeugt eine Tabelle mit dem Wert der Bildpixel am Ort der Punkt-Vektoren
+  "vector.csv". Die Bilddaten aus der Liste "sFtr" müssen im Imalys-Verzeichnis
+  stehen. Die Punkt-Vektoren müssen im WKT-Format in "vector.csv" stehen. Bild-
+  und Vektordaten müssen dieselbe Projektion haben. Die Geometrie der Bilddaten
+  muss identisch sein. }
+{ pAV konvertiert die Koordinaten aus "vector.csv" in einen Pixelindex. Der
+  Index basiert auf der Bounding-Box des ersten Bilds in "sFtr". pAV ignoriert
+  Vektor-Punkte außerhalb der Bounding-Box. }
+var
+  iaPix:tnInt=nil; //Pixelindices
+  rHdr:trHdr; //Metadaten
+  slFtr:tStringList=nil; //Dateinamen-Liste
+  I:integer;
+begin
+// gleiches CRS bei allen Bildern und cfVct? ← EPSG überprüfen
+  try
+    slFtr:=tStringList.Create;
+    slFtr.AddText(Tools.CommaToLines(sFtr)); //ausgewählte lokale Bilder
+    Header.Read(rHdr,eeHme+slFtr[0]); //Metadaten aus erstem Bild
+    iaPix:=GetIndex(rHdr); //Pixelindices aus Vektor-Punkten
+    //PixMask(iaPix,slFtr[0]); //NUR KONTROLLE DER LAGE
+    SetLength(Result,slFtr.Count,1); //leere Attribut-Liste
+    for I:=0 to pred(slFtr.Count) do //alle gewählten Prozesse
+      Result[I]:=PointAttributes(iaPix,rHdr,eeHme+slFtr[I]); //Werte am Ort der Punkte
+  finally
+    slFtr.Free;
+  end;
+end;
 
-function tCover.Rotate(
-  iEpg:integer; //Projektion im Ziel
-  rImg,rRoi:trFrm): //Rahmen von Bild und Ziel, geographisch
-  trFrm; //gemeinsamer Rahmen in neuer Projektion
+{ fVA liest die Vorlage "vector.csv", ergänzt Attribute und speichert das
+  Ergebnis als "focus.csv". fVA liest und schreibt einzelne Zeilen im Text-
+  Format. fVA übernimmt die Feldnamen aus "sFtr" und die Werte der Tabelle aus
+  "fxVal". Feldnamen und Werte müssen korresponieren. fVA schreibt alle Werte
+  im Float-Format und markiert nicht definierte Werte als "NA". }
+
+procedure tPoints.PointAppend(
+  fxVal:tn2Sgl; //Werte[Kanal,Punkt] (aus Vorbild)
+  sFtr:string); //Feldnamen = Prozess-Namen als CSV
+const
+  cCsv = 'fVA: File not available: ';
+  cFcs = 'fVA: File creation failed: ';
+  cFld = 'fVA: Number of field names differ from field values!';
+  cRcd = 'fVA: Number of vector records differ from extraced values!';
+var
+  dCsv:TextFile; //Vektor-Import im CSV-Format
+  dFcs:TextFile; //ergänzte Attribute im CSV-Format
+  iRcd:integer=0; //Anzahl Punkte=Zeilen
+  sLin:string; //Zeilen-Puffer
+  I:integer;
+begin
+  if WordCount(sFtr,[','])<>length(fxVal) then
+    Tools.ErrorOut(3,cFld);
+  //length(slPrc)=length(fxVal)?
+  //Anzahl Zeilen <> Länge Attribut-Arrays
+  try
+    AssignFile(dCsv,eeHme+cfVct); //Test-Punkte als CSV
+    {$i-} Reset(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+eeHme+cfVct);
+
+    AssignFile(dFcs,eeHme+cfFcs); //Punkte mit ergänzten Attributen
+    {$i-} Rewrite(dFcs); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cFcs+eeHme+cfFcs);
+
+    readln(dCsv,sLin); //bestehene Feldnamen
+    writeln(dFcs,sLin+','+DelSpace(sFtr)); //neuer Header
+    repeat
+      readln(dCsv,sLin); //bestehene Werte
+      for I:=0 to high(fxVal) do //alle neuen Felder
+        if not IsNan(fxVal[I,iRcd])
+          then sLin+=','+FloatToStr(fxVal[I,iRcd])
+          else sLin+=',NA';
+      inc(iRcd); //neue Zeile
+      writeln(dFcs,sLin); //Zeile speichern
+    until eof(dCsv);
+    if length(fxVal[0])<>iRcd then Tools.ErrorOut(3,cRcd);
+  finally
+    CloseFile(dCsv);
+    Flush(dFcs);
+    CloseFile(dFcs);
+  end; //of try ..
+end;
+
+procedure tPoints.FormatAppend(iFtr:integer);
+{ pFA erweitert die CSVT-Datei "vector.csvt" um "iFtr" neue Felder im Float-
+  Format und speichert das Ergebnis als "focus.csvt". }
+const
+  cFlt = ',Real(24.15)';
+var
+  sFmt:string;
+  I:integer;
+begin
+  sFmt:=Tools.LineRead(eeHme+ChangeFileExt(cfVct,'.csvt'));
+  for I:=0 to pred(iFtr) do
+    sFmt+=cFlt; //Single-Format-Code anhängen
+  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),sFmt);
+end;
+
+{ pAt überträgt Werte von Bildpixeln in die Attribut-Tabelle von Punkt-
+  Vektoren. Dazu importiert pAt die Punkte als "vector.csv", transformiert sie
+  in die Projektion "iCrs", ergänzt die Werte der Attribute für alle Records,
+  speichert das Ergebnis als "focus.csv" und transformiert die CSV-Datei in das
+  Shape-Formet. "sFtr" muss gültige Dateinamen aus dem Imalys-Verzeichnis
+  enthalten. "Raster- und CSV-Vektoren müssen dieselbe Projektion haben. }
+
+procedure tPoints.xPointAttrib(
+  iCrs:integer; //Projektion der Bilddaten
+  sFtr:string; //Merkmale = Dateinamen in kommagetrennter Liste
+  sPnt:string); //Vorlage Punkt-Vektoren
+const
+  cGeo = 'fE: Observation points file (vector) not available! ';
+var
+  fxVal:tn2Sgl=nil; //Attribute[Kanal][Punkt]
+begin
+  //alle feature-Dateien gleich groß?
+  Gdal.ImportVect(iCrs,sPnt); //Punkt-Vektoren als "vector.csv"
+  FieldTypes(sPnt); //CSVT-Datei mit Feldtypen aus gdal-Info
+  if not FileExists(eeHme+cfVct) then
+    Tools.ErrorOut(3,cGeo+eeHme+cfVct);
+  fxVal:=AttribValues(sFtr); //Attribute an gewählten Punkten
+  PointAppend(fxVal,sFtr); //Feldnamen + Attribute im CSV erweitern
+  FormatAppend(high(fxVal)); //Formatangaben als CSVT erweitern
+  //Gdal.ExportShape(False,iCrs,eeHme+cfFcs+'.csv',sTrg); //als ESRI-Shape speichern
+  Gdal.ExportShape(iCrs,0,eeHme+cfFcs,eeHme+ChangeFileExt(cfFcs,'.shp')); //als ESRI-Shape speichern
+  Tools.HintOut(true,'PointAttrib: '+cfFcs)
+end;
+
+{ pVA liest die Vorlage "vector.csv", ergänzt numerische Attribute und
+  speichert das Ergebnis als "focus.csv". pVA liest und schreibt einzelne
+  Zeilen im Textformat. pVA übernimmt die Feldnamen aus "sFtr" und die Werte
+  der Tabelle aus "fxVal". Feldnamen und Werte müssen korresponieren. pVA
+  schreibt alle Werte im Float-Format und markiert nicht definierte Werte als
+  "NA". }
+
+procedure tPoints.ValueAppend(
+  fxVal:tn2Sgl; //Werte[Kanal,Punkt] (aus Vorbild)
+  sFtr:string); //Feldnamen = Prozess-Namen als CSV
+const
+  cAtr = 'pVA: Geometry import must contain only a WKT and a DN field!';
+  cCsv = 'pVA: File not available: ';
+  cFcs = 'pVA: File creation failed: ';
+  cRcd = 'pVA: Record-ID not provided by index attributes: ';
+var
+  dCsv:TextFile; //Vektor-Import im CSV-Format
+  dFcs:TextFile; //ergänzte Attribute im CSV-Format
+  iRcd:integer; //Anzahl Punkte=Zeilen
+  sLin:string; //Zeilen-Puffer
+  I:integer;
+begin
+  try
+    AssignFile(dCsv,eeHme+cfVct); //bestehende Geometrie als CSV
+    {$i-} Reset(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+eeHme+cfVct);
+
+    AssignFile(dFcs,eeHme+cfFcs); //Geometrie mit Attributen
+    {$i-} Rewrite(dFcs); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cFcs+eeHme+cfFcs);
+
+    readln(dCsv,sLin); //bestehene Feldnamen
+    if sLin<>'WKT,DN' then Tools.ErrorOut(3,cAtr);
+    writeln(dFcs,'WKT,DN,'+DelSpace(sFtr)); //erweiterte Feldnamen
+    repeat
+      readln(dCsv,sLin); //bestehene Werte
+      iRcd:=rPos(',',sLin); //letztes Komma
+      iRcd:=StrToInt(copy(sLin,iRcd+2,length(sLin)-iRcd-2)); //Record-ID
+      if iRcd>high(fxVal[0]) then Tools.ErrorOut(3,cRcd+IntToStr(iRcd));
+      for I:=0 to high(fxVal) do //alle Attribute
+        if not IsNan(fxVal[I,iRcd])
+          then sLin+=','+FloatToStr(fxVal[I,iRcd])
+          else sLin+=',NA';
+      writeln(dFcs,sLin); //Zeile speichern
+    until eof(dCsv);
+  finally
+    CloseFile(dCsv);
+    Flush(dFcs);
+    CloseFile(dFcs);
+  end; //of try ..
+end;
+
+{ pDF erzeugt eine CSVT-Datei für eine WKT-Geometrie mit Attributen. Die "DN"
+  für die Datensätze ist "integer", alle Attribute sind "real". pDF speichert
+  das Ergebnis als "focus.csvt". }
+
+procedure tPoints.DefaultFormat(iFtr:integer);
+const
+  cFlt = ',Real(24.15)';
+  cInt = ',Integer(9.0)';
+var
+  sFmt:string;
+  I:integer;
+begin
+  sFmt:='WKT'+cInt; //Geometrie und "DN"
+  for I:=0 to pred(iFtr) do
+    sFmt+=cFlt; //Single-Format für alle Attribute
+  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),sFmt);
+end;
+
+{ pPA überträgt die Attribut-Tabelle "index.bit" auf die Geometrie "vector.csv"
+  und speichert das Ergebnis als "focus.csv". "vector.csv" muss existieren und
+  darf keine Attribute enthalten. pPn läd die Polygone einzeln als Textzeile,
+  ergänzt alle Werte aus der Attribut-Tabelle und schreibt die erweiterten
+  Zeilen nach "focus.csv". Zum Schluss erzeugt pPn eine angepasste "focus.csvt"
+  Datei. qGis kann "focus.csv" direkt lesen. }
+
+procedure tPoints.xPolyAttrib;
+const
+  cVal = 'pPA: Number of fields at index table differs from field names!';
+  cVct = 'pPA: Geometry file not found: ';
+var
+  fxVal:tn2Sgl=nil; //Zell-Attribute als Maxtrix
+  sFtr:string=''; //Liste mit Feldnamen aus Index-Header
+begin
+  if not FileExists(eeHme+cfVct) then Tools.ErrorOut(3,cVct+eeHme+cfVct);
+  sFtr:=Header.ReadLine(true,'field names =',eeHme+cfIdx); //Liste mit Feldnamen (CSV)
+  fxVal:=Tools.BitRead(eeHme+cfIdx); //aktuelle Zellindex-Attribute als Matrix
+  if WordCount(sFtr,[','])<>length(fxVal) then Tools.ErrorOut(3,cVal);
+  ValueAppend(fxVal,sFtr); //"vector.csv" mit Attributen als "focus.csv" speichern
+  DefaultFormat(length(fxVal)); //CSVT-Datei für Attribute
+  Tools.HintOut(true,'PolyAttrib: '+cfFcs);
+end;
+
+{ tFV gibt alle Werte aus dem Feld "sFld" in der Tabelle von "vector.csv" als
+  String-Liste zurück. tFV unterstellt, dass "vector.csv" Polygone im WKT-
+  Format enthält. }
+
+function tTable.FieldValues(sFld:string):tStringList;
+const
+  cCsv = 'Impossible to read file: ';
+  cFld = 'Field name not provided: ';
+  cWkt = 'Geometry must be WKT formatted: ';
+var
+  dCsv:TextFile; //Datei
+  iCol:integer=0; //Spalte für gesuchtes Feld
+  iWkt:integer; //Ende Polygon-Teil
+  sLin:string; //aktuelle Zeile
+  I:integer;
+begin
+  Result:=tStringList.Create;
+  try
+    AssignFile(dCsv,eeHme+cfVct);
+    {$i-} Reset(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+eeHme+cfVct);
+    readln(dCsv,sLin); //Zeile mit Feldnamen
+    if ExtractDelimited(1,sLin,[','])<>'WKT' then
+      Tools.ErrorOut(3,cCsv+eeHme+cWkt);
+    for I:=2 to WordCount(sLin,[',']) do
+      if ExtractDelimited(I,sLin,[','])=sFld then iCol:=pred(I); //Spalte mit Feldnamen ohne "WKT"
+    if iCol<1 then Tools.ErrorOut(3,cFld+sFld);
+    repeat
+      readln(dCsv,sLin); //ab zweite Zeile = Inhalte
+      iWkt:=PosEx('"',sLin,2); //Position zweites Doppelhochkomma
+      Delete(sLin,1,succ(iWkt)); //Polygon-Teil + Komma entfernen
+      sLin:=trim(ExtractDelimited(iCol,sLin,[','])); //Wort im Abschnitt "iCol"
+      for I:=length(sLin) downto 1 do
+        if sLin[I]='"' then delete(sLin,I,1); //Doppelhochkommata entfernen
+      Result.Add(sLin);
+    until eof(dCsv);
+  finally
+    CloseFile(dCsv);
+  end;
+end;
+
+{ tAI erweitert die Tabelle aus "vector.csv" um das Integer-Feld "sFtr"-ID.
+  Dazu muss die Tabelle als "focus.csv" neu geschrieben werden. tAI unterstellt
+  dass "vector.csv" Polygone im WKT-Format enthält. }
+
+procedure tTable.AddInteger(
+  iaVal:tnInt; //Werte (Liste) Index wie Vektoren
+  sFtr:string); //neue Feldnamen, kommagetrennt
+const
+  cAtr = 'pVA: Geometry import must contain a WKT field!';
+  cCsv = 'pVA: File not available: ';
+  cFcs = 'pVA: File creation failed: ';
+var
+  dCsv:TextFile; //Vektor-Import im CSV-Format
+  dFcs:TextFile; //ergänzte Attribute im CSV-Format
+  iCnt:integer=0; //Zeilen-ID (ab Null)
+  sLin:string; //Zeilen-Puffer
+begin
+  try
+    AssignFile(dCsv,eeHme+cfVct); //bestehende Geometrie als CSV
+    {$i-} Reset(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+eeHme+cfVct);
+
+    AssignFile(dFcs,eeHme+cfFcs); //Geometrie mit Attributen
+    {$i-} Rewrite(dFcs); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cFcs+eeHme+cfFcs);
+
+    readln(dCsv,sLin); //bestehene Feldnamen
+    if LeftStr(sLin,3)<>'WKT' then Tools.ErrorOut(3,cAtr);
+    if sFtr[1]<>',' then sFtr:=','+sFtr; //führendes Komma
+    writeln(dFcs,sLin+DelSpace(sFtr)); //erweiterte Feldnamen
+    repeat
+      readln(dCsv,sLin); //bestehene Werte
+      //if not IsNan(fxVal[I,iRcd]) .. sLin+='NA'
+      sLin+=','+FloatToStr(iaVal[iCnt]); //Wert ergänzen
+      writeln(dFcs,sLin); //Zeile speichern
+      inc(iCnt) //Zeilen-Index
+    until eof(dCsv);
+  finally
+    CloseFile(dCsv);
+    Flush(dFcs);
+    CloseFile(dFcs);
+  end; //of try ..
+  Tools.HintOut(true,'AddInteger: '+cfFcs);
+end;
+
+procedure tTable.AddFormat(sFmt:string);
+{ tAF erweitert die CSVT-Tabelle um den Eintrag "sFmt". "vector.csvt" muss
+  existieren. tAF schreibt nach "focus.csvt". }
+const
+  cVct = 'Vector format definition vector.CSVT needed!';
+begin
+  if not FileExists(ChangeFileExt(eeHme+cfVct,'.csvt')) then
+    Tools.ErrorOut(3,cVct+ChangeFileExt(eeHme+cfVct,'.csvt'));
+  if sFmt[1]<>',' then sFmt:=','+sFmt;
+  sFmt:=Tools.LineRead(ChangeFileExt(eeHme+cfVct,'.csvt'))+sFmt;
+  Tools.TextOut(eeHme+ChangeFileExt(cfFcs,'.csvt'),sFmt);
+end;
+
+{ tAI erzeugt aus dem Feld "sFld" in "vector.csv" ein Array mit Klassen-IDs für
+  die Inhalte von "sFld", ergänzt damit die Tabelle und speichert das Ergebnis
+  als "focus.csv". }
+{ tAI betrachtet die Inhalte von "sFld" als Strings und vergibt für jedes
+  Muster eine Klassen-ID. Dazu kopiert tAI die ursprüngliche Liste, sortiert
+  sie und reduziert gleiche Einträge bis von jedem Muster nur noch ein Beispiel
+  übrig bleibt. tAI verwendet den Index der reduzierten Liste als Klassen-ID,
+  trägt die IDs in ein neues Integer-Array ein und ergänzt das Array als neues
+  Feld für "focus.csv". tAI erweitert auch die CSVT-Datei und übernimmt die
+  PRJ-Datei aus "vector.prj" }
+
+function tTable.AddIndex(sFld:string):tStringList;
+var
+  iaMap:tnInt=nil; //Klassen-IDs
+  slFld:tStringList=nil; //Klassen-Bezeichner, alle Polygone
+  I:integer;
+  qS:string;
+begin
+  Result:=tStringList.Create; //klassifizierte Bezeichner
+  try
+    slFld:=FieldValues(sFld); //Klassen-Bezeichner, alle Polygone
+    qS:=slFld.CommaText; //CONTROL
+    Result.AddStrings(slFld); //Liste kopieren
+    Result.Sort; //alphabetisch
+    for I:=pred(Result.Count) downto 1 do
+      if Result[I]=Result[pred(I)] then Result.Delete(I); //nur verschiedene Bezeichner
+    Result.Insert(0,'–'); //leere Klasse für Rückweisung, ID=0
+    iaMap:=Tools.InitInteger(slFld.Count,0); //Klassen-IDs als Array
+    for I:=0 to pred(slFld.Count) do
+      iaMap[I]:=Result.IndexOf(slFld[I]); //Nummer des Bezeichners = Klassen-ID
+    Table.AddInteger(iaMap,cfMsk); //Klassen-IDs als "mask" an Tabelle anhängen
+    Table.AddFormat('Integer(10)'); //Feld-Format an CSVT anhängen
+    Tools.CopyFile(ChangeFileExt(eeHme+cfVct,'.prj'),
+      eeHme+ChangeFileExt(cfFcs,'.prj')); //Projektion als WKS
+    //Result.Count darf $FF nicht überschreiten
+  finally
+    slFld.Free;
+  end;
+end;
+
+{ cCI übernimmt den EPSG-Code als Integer aus dem Text von "gdalsrsinfo" }
+
+function tCover.CrsInfo(
+  sImg:string): //Bidname
+  integer; //EPSG-Code ODER Null
+const
+  cCrs = 'cCI: No CRS code found in: ';
+var
+  slInf:tStringList=nil;
+  I:integer;
+begin
+  Result:=0; //Vorgabe = undefiniert
+  try
+    slInf:=TStringList.Create;
+    slInf.AddText(Gdal.SrsInfo(sImg)); //GDAL-Info übernehmen
+    for I:=0 to pred(slInf.Count) do
+      if LeftStr(slInf[I],4)='EPSG' then
+      begin
+        Result:=StrToInt(copy(slInf[I],6,length(slInf[I])-5));
+        break
+      end;
+  finally
+    slInf.Free;
+  end;
+end;
+
+{ cVF gibt das Auswahl-Rechnteck und die Projektion einer Vektor-Datei zurück.
+  cVF ruft dazu ogrinfo auf, sucht die passenden Stichworte und konvertiert den
+  Inhalt. Die Koordinaten beziehen sich auf das CRS der Vektoren. }
+
+function tCover.VectorFrame(sFrm:string):trFrm; //Dateiname: Auswahlrahmen
+const
+  cFrm = 'cVF: Unable to open bounding geometry: ';
+var
+  sLin:string; //Zwischenlager
+  slInf:tStringList=nil; //Vektor-Info
+  I:integer;
 begin
   Result:=crFrm; //Vorgabe = unmöglich
+  //if length(sFrm)<1 then exit; //kein Aufruf
+  if FileExists(sFrm)=False then Tools.ErrorOut(3,cFrm+sFrm);
+  try
+    slInf:=tStringList.Create;
+    slInf.AddText(Gdal.OgrInfo(sFrm)); //Info-Text
+    for I:=0 to pred(slInf.Count) do
+    begin
+      if LeftStr(slInf[I],13)='    ID["EPSG"' then
+        Result.Epg:=StrToInt(copy(slInf[I],15,length(slInf[I])-16)) else
+      if LeftStr(slInf[I],4)='    ' then continue; //nur linksbündige Einträge
 
-  Cover.WriteFrame(rImg,ccPrj); //Bildkachel als CVS-Datei
-  Gdal.ImportVect(iEpg,eeHme+cfFcs); //Umprojizieren
-  rImg:=Cover.ReadFrame(eeHme+cfVct); //transformierte Bounding-Box
-{ TODO: Cover.Rotate verwendet Vektor-Transformation im CSV-Format um Punkte
-        neu zu projizieren. Punkte können auch direkt umprojiziert werden. }
-  Cover.WriteFrame(rRoi,ccPrj); //ROI als CVS-Datei
-  Gdal.ImportVect(iEpg,eeHme+cfFcs); //Umprojizieren
-  rRoi:=Cover.ReadFrame(eeHme+cfVct); //transformierte Bounding-Box
-
-  Result:=Cover.Intersect(rImg,rRoi); //Rahmen verschneiden, projiziert wie Archiv
+      if LeftStr(slInf[I],7)='Extent:' then
+      begin
+        sLin:=ExtractDelimited(2,SlInf[I],['(',')']);
+        Result.Lft:=StrToFloat(ExtractDelimited(1,sLin,[',']));
+        Result.Btm:=StrToFloat(ExtractDelimited(2,sLin,[',']));
+        sLin:=ExtractDelimited(4,SlInf[I],['(',')']);
+        Result.Rgt:=StrToFloat(ExtractDelimited(1,sLin,[',']));
+        Result.Top:=StrToFloat(ExtractDelimited(2,sLin,[',']));
+      end else
+      if (LeftStr(slInf[I],7)='PROJCRS')
+      or (LeftStr(slInf[I],7)='GEOGCRS') then
+        Result.Crs:=ExtractWord(2,slInf[I],['"']) else
+    end;
+  finally
+    slInf.Free;
+  end;
 end;
 
 { pGA bildet Mittelwerte aus den Bilddaten "sImg" für ein regelmäßiges Gitter
@@ -1453,12 +933,12 @@ begin
           fxRes[Y,X]/=ixCnt[Y,X] //Mittelwert
         else fxRes[Y,X]:=NaN; //keine Daten
     Image.WriteBand(fxRes,B,sTrg);
-    write(#13,rHdr.Stk-B);
+    write(#13,rHdr.Stk-B,#32);
   end;
   if rHdr.Stk>1
-    then Header.WriteMulti(rGrd,rHdr.aBnd,sTrg) //sollte so verwendbar sein
+    then with rHdr do Header.WriteMulti(Prd,Stk,rGrd,aBnd,sTrg) //sollte so verwendbar sein
     else Header.WriteScalar(rGrd,sTrg);
-  Tools.HintOut(true,'Points.GridAttrib: '+ExtractFileName(sTrg));
+  Tools.HintOut(true,'GridAttrib: '+ExtractFileName(sTrg));
 end;
 
 { tLC korreliert den ersten Kanal aus "sImg" mit allen anderen und gibt das
@@ -1508,7 +988,7 @@ begin
   //Result.Insert(0,'Source:');
   Result[0]:=Result[0]+' correlates with:';
   Result.SaveToFile(eeHme+cfTab);
-  Tools.HintOut(true,'table.LayerCorrelate: '+eeHme+cfTab)
+  Tools.HintOut(true,'LayerCorrelate: '+eeHme+cfTab)
 end;
 
 { cRF extrahiert die Ursprung, Projektion, Bounding-Box, Pixelgröße und Kanäle
@@ -1516,7 +996,7 @@ end;
   Der Ursprung bezeichnet die linke obere Ecke des Bildes. Der Rahmen kann
   leere Bildflächen enthalten. }
 
-function tCover.RasterFrame(sImg:string):trCvr; //Bildname: Abdeckung
+function tCover._RasterCover_(sImg:string):trCvr; //Bildname: Abdeckung
 const
   cCrs = 'cRF: Insufficient coordinate system information: ';
   cSqr = 'Reprojection necessary to get square pixels: ';
@@ -1555,7 +1035,7 @@ begin
         Result.Pix:=abs(StrToFloat(ExtractDelimited(2,slInf[I],['(',','])));
         fXip:=abs(StrToFloat(ExtractDelimited(2,slInf[I],[',',')'])));
         if (fXip-Result.Pix)/(fXip+Result.Pix)>0.0001 then
-          Tools.ErrorOut(2,cSqr+sImg); //nur quadratische Pixel!
+          Tools.ErrorOut(3,cSqr+sImg); //nur quadratische Pixel!
       end
       else if LeftStr(slInf[I],5)='Band ' then //"Band_" codiert Kanal-Namen
         Result.Stk:=max(StrToInt(ExtractDelimited(2,slInf[I],[#32])),Result.Stk);
@@ -1567,38 +1047,150 @@ begin
   Result.Btm:=Result.Top-Result.Hgt*Result.Pix;
   if Result.Epg=0 then Result.Epg:=CrsInfo(sImg); //EPSG-Code
   if (Result.Pix=0) or (Result.Hgt=0) or (Result.Wdt=0) then
-    Tools.ErrorOut(2,cCrs+sImg);
+    Tools.ErrorOut(3,cCrs+sImg);
 end;
 
-{ cCr erzeugt aus den Envi-Headern aller Bilder in "slImg" einen gemeinsamen
-  Rahmen UND gibt "bFit=true" zurück, wenn alle Rahmen dieselbe Größe haben. }
+{ cGB gibt die Bounding-Box von Bilddaten als geographische Koordinaten zurück.
+  cGB übernimmt dazu den Text das gdalinfo Befehls als "slInf" und die Zeilen-
+  ID der Überschrift "Corner Coordinates" als "iOfs". "gdalinfo" übergibt alle
+  Koordinaten auch geographisch.
+  ==> DIE KOORDINATEN SIND IMMER GEOGRAPHISCH, UNABHÄNGIF VON RRES.ETP }
 
-function tCover.xCover(
-  var bFit:boolean; //alle Bilder gleiche Größe
-  slImg:tStringList): //Namen aller Bilder
-  trFrm; //Rahmen für alle Bilder
-const
-  cImg = 'cCt: Either a polygon or a list of images must be submitted!';
-var
-  rHdr:trHdr; //Metadaten
-  I:integer;
+procedure tCover.GeoBonds(slInf:tStringList; iOfs:integer; var rRes:trFrm);
+
+function lGetLon(sPnt:string):double;
 begin
-  bFit:=True; //Vorgabe
-  if slImg.Count<1 then Tools.ErrorOut(3,cImg);
+  Result:=
+    StrToFloat(copy(sPnt,1,3))+
+    StrToFloat(copy(sPnt,5,2))/60+
+    StrToFloat(copy(sPnt,8,5))/3600
+end;
 
-  Result:=crFrm; //Vorgabe
-  for I:=0 to pred(slImg.Count) do //Rahmen aus allen Bildern
+function lGetLat(sPnt:string):double;
+begin
+  Result:=
+    StrToFloat(copy(sPnt,16,3))+
+    StrToFloat(copy(sPnt,20,2))/60+
+    StrToFloat(copy(sPnt,23,5))/3600
+end;
+
+var
+  sLin:string; //Koordinaten
+  K:integer;
+begin
+  for K:=1 to 4 do
   begin
-    Header.Read(rHdr,slImg[I]);
-    if I>0 then
-      if (rHdr.Lon<>Result.Lft) or (rHdr.Lon+rHdr.Scn*rHdr.Pix<>Result.Rgt)
-      or (rHdr.Lat<>Result.Top) or (rHdr.Lat-rHdr.Lin*rHdr.Pix<>Result.Btm)
-      then bFit:=False; //Rahmen differieren
-    Result.Lft:=min(rHdr.Lon,Result.Lft);
-    Result.Top:=max(rHdr.Lat,Result.Top);
-    Result.Rgt:=max(rHdr.Lon+rHdr.Scn*rHdr.Pix,Result.Rgt);
-    Result.Btm:=min(rHdr.Lat-rHdr.Lin*rHdr.Pix,Result.Btm);
+    sLin:=ExtractWord(4,slInf[iOfs+K],['(',')']); //Lon + Lat geographisch
+    case K of
+      1:begin
+          rRes.Lft:=min(lGetLon(sLin),rRes.Lft);
+          rRes.Top:=max(lGetLat(sLin),rRes.Top);
+        end;
+      2:begin
+          rRes.Lft:=min(lGetLon(sLin),rRes.Lft);
+          rRes.Btm:=min(lGetLat(sLin),rRes.Btm);
+        end;
+      3:begin
+          rRes.Rgt:=max(lGetLon(sLin),rRes.Rgt);
+          rRes.Top:=max(lGetLat(sLin),rRes.Top);
+        end;
+      4:begin
+          rRes.Rgt:=max(lGetLon(sLin),rRes.Rgt);
+          rRes.Btm:=min(lGetLat(sLin),rRes.Btm);
+        end;
+    end;
   end;
+end;
+
+{ cIB gibt in "rRes" die Bounding-Box von Bilddaten zurück. Dazu muss der
+  "gdalinfo" Text in "slInf" und die Zeilen-ID der Überschrift "Corner
+  Coordinates:" in "iOfs" übergeben werden. }
+
+procedure tCover.ImgBonds(slInf:tStringList; iOfs:integer; var rRes:trFrm);
+var
+  fRes:double; //Koordinate
+  sLin:string; //Koordinaten-Klammer
+  K:integer;
+begin
+  for K:=1 to 4 do
+  begin
+    sLin:=ExtractWord(2,slInf[iOfs+K],['(',')']); //Lon + Lat projiziert
+
+    if TryStrToFloat(ExtractWord(1,sLin,[',']),fRes) then
+    begin
+      rRes.Lft:=min(fRes,rRes.Lft);
+      rRes.Rgt:=max(fRes,rRes.Rgt);
+    end;
+
+    if TryStrToFloat(ExtractWord(2,sLin,[',']),fRes) then
+    begin
+      rRes.Top:=max(fRes,rRes.Top);
+      rRes.Btm:=min(fRes,rRes.Btm);
+    end;
+  end;
+end;
+
+{ lLM bestimmt den niedrigsten Pixel in jeder Zone und trägt seine Koordinaten
+  in die Attribut-Tabelle ein. }
+{ lLM sucht im Rasterbild (Höhemodell "fxElv", Zonen-Index "ixIdx") in jeder
+  Zone nach dem niedrigsten Pixel und registriert seine Pixel-Koordinaten. Dann
+  transformiert lLM die Pixel-Koordinaten in das CRS der Index-Datei und trägt
+  sie als Lat/Lon in die Attribut-Tabelle ein. }
+
+procedure tLines._LocalMinima_(
+  fxElv:tn2Sgl; //Vorbild Rasterdaten (Höhe)
+  ixIdx:tn2Int; //Zonen-Index aus "fxElv"
+  const rHdr:trHdr); //Zonen-Metadaten
+const
+  cMax:single=MaxInt; //sehr hoch"
+var
+  faLat:tnSgl=nil; //Minimum Höhe: Latitute
+  faLon:tnSgl=nil; //Minimum Höhe: Longitude
+  faMin:tnSgl=nil; //Höhe niedrigster Pixel pro Zone
+  iaHrz:tnInt=nil; //Pixel-Index "Longitude"
+  iaVrt:tnInt=nil; //Pixel-Index "Latitude"
+  X,Y,Z:integer;
+begin
+  //passt die Anzahl der Zonen? fxElv <=> iCnt
+  faMin:=Tools.InitSingle(succ(rHdr.Cnt),dWord(cMax)); //Minimum Höhe pro Zone
+  faLat:=Tools.InitSingle(succ(rHdr.Cnt),0); //Pixel-Index "Latitude"
+  faLon:=Tools.InitSingle(succ(rHdr.Cnt),0); //Pixel-Index "Longitude"
+  iaHrz:=Tools.InitInteger(succ(rHdr.Cnt),0); //Pixel-Index "horizontal"
+  iaVrt:=Tools.InitInteger(succ(rHdr.Cnt),0); //Pixel-Index "vertikal"
+  for Y:=0 to high(ixIdx) do
+    for X:=0 to high(ixIdx[0]) do
+      if fxElv[Y,X]<faMin[ixIdx[Y,X]] then
+      begin
+        iaVrt[ixIdx[Y,X]]:=Y; //Pixel-Indices
+        iaHrz[ixIdx[Y,X]]:=X;
+        faMin[ixIdx[Y,X]]:=fxElv[Y,X]; //neues Minimum
+      end;
+  for Z:=1 to high(faMin) do
+  begin
+    faLat[Z]:=rHdr.Lat-iaVrt[Z]*rHdr.Pix-rHdr.Pix/2;
+    faLon[Z]:=rHdr.Lon+iaHrz[Z]*rHdr.Pix+rHdr.Pix/2;
+  end;
+  Tools.BitInsert(faLat,$FFF,eeHme+cfAtr); //Latitude ergänzen
+  Tools.BitInsert(faLon,$FFF,eeHme+cfAtr); //Longitude ergänzen
+end;
+
+{ tVM erzeugt einen Raster-Layer mit Klassen aus dem Attribut "sFld" im Vektor-
+  Layer "sVct". "sFld" muss natürliche Zahlen zwischen 1 und 250 entalten.
+  Table.AddThema kann beliebige Bezeichner in fortlaufende IDs aus natürlichen
+  Zahlen verwandeln. }
+
+procedure tTable.VectorMask(
+  sFld:string; //Name des Klassen-Attributs in der Vector-Datei
+  sVct:string); //Name der Vektor-Datei
+var
+  ixRfz:tn2Byt=nil; //Klassen-Maske
+  rHdr:trHdr; //gemeinsame Metadaten
+begin
+  Header.Read(rHdr,eeHme+cfIdx); //Vorbild für richtige Größe
+  ixRfz:=Tools.Init2Byte(rHdr.Lin,rHdr.Scn); //leere Maske
+  Image.WriteThema(ixRfz,eeHme+cfMap); //leeres Pixel-Bild als cfMap gespeichert
+  Header.WriteThema(1,rHdr,'zero,one',eeHme+cfMap); //als Klassen-Metadaten speichern
+  Gdal.Rasterize(0,sFld,eeHme+cfMap,eeHme+cfFcs); //Klassen-IDs einbrennen
 end;
 
 // Raster-Bild Statistik
@@ -1606,7 +1198,7 @@ end;
 // Hig/Low für 99%/1% Percentil
 // Mid/Mea für mean/median
 
-function tTable._BandHist(
+function tTable.BandHist(
   var fSum:double; //Summe aller Werte
   var iHit:integer; //gültige Treffer
   iBnd:integer; //Kanal in "sImg" (Eingabe)
@@ -1637,7 +1229,7 @@ begin
     fSum+=Result[iHit]; //Summe aller Werte
     inc(iHit) //gültige Stichproben
   end;
-  Reduce.QuickSort(Result,iHit);
+  QuickSort(Result,iHit);
 end;
 
 { lIS bestimmt Minimum und Maximum, 1%-Percentile, Mittelwert und Median sowie
@@ -1647,7 +1239,7 @@ end;
   die gültigen Proben in "iHit" und summiert ihre Werte in "fSum". Für die
   Statistik sortiert lIS die Liste und bildet die Kenwerte }
 
-function tTable._xImageStats(
+function tTable.xImageStats(
   iSmp:integer; //Stichproben
   sImg:string): //Vorbild
   tStringList; //Ergebnis als Text
@@ -1672,7 +1264,7 @@ begin
   Header.Read(rHdr,sImg); //Metadaten Zellindex
   for B:=0 to pred(rHdr.Stk) do //Kanäle einzeln
   begin
-    faVal:=_BandHist(fSum,iHit,B,iSmp,sImg); //iHit wird gesetzt
+    faVal:=BandHist(fSum,iHit,B,iSmp,sImg); //iHit wird gesetzt
 
     Result.Add('Band: '+ExtractWord(succ(B),rHdr.aBnd,[#10]));
     Result.Add(#9'Min  '#9+FloatToStrF(faVal[0],ffFixed,7,4));
@@ -1693,112 +1285,512 @@ begin
       //Result.Add(#9+IntToStr(I)+#9+IntToStr(iaHst[I]));
       Result.Add(#9+FloatToStrF(faVal[iLow+trunc(iPrd/cHst*I)],ffFixed,7,4)+
         #9+IntToStr(iaHst[I]));
-    Tools.HintOut(true,'table.ImageStats '+IntToStr(succ(B))); //Fortschritt
+    Tools.HintOut(true,'ImageStats: '+IntToStr(succ(B))); //Fortschritt
   end;
   Result.SaveToFile(eeHme+cfTab)
+end;
+
+{ rQS sortiert das Array "faDev" aufsteigend. Dazu vertauscht rQS Werte-Paare
+  bis alle Vergliche passen. rQS verwendet zu Beginn große Abstände zwischen
+  den Positionen im Array und reduziert die Distanz schrittweise. }
+
+procedure tTable.QuickSort(
+  faDev:tnSgl; //unsortiertes Array
+  iDim:integer); //gültige Stellen im Array
+var
+  fTmp:single; //Zwischenlager
+  iChg:integer; //Tausch notwendig
+  iStp:integer; //Distanz zwischen Positionen
+  B:integer;
+begin
+  if iDim<2 then exit; //nichts zu sortieren
+  iStp:=iDim; //Vorgabe
+  repeat
+    if iStp>1 then iStp:=iStp div 2;
+    iChg:=0; //Vorgabe
+    for B:=iStp to pred(iDim) do
+      if faDev[B-iStp]>faDev[B] then //große Werte nach hinten
+      begin
+        fTmp:=faDev[B-iStp];
+        faDev[B-iStp]:=faDev[B];
+        faDev[B]:=fTmp;
+        inc(iChg)
+      end;
+    {for B:=pred(iDim) downto iStp do
+      if faDev[B-iStp]>faDev[B] then //große Werte nach hinten
+      begin
+        fTmp:=faDev[B-iStp];
+        faDev[B-iStp]:=faDev[B];
+        faDev[B]:=fTmp;
+        inc(iChg)
+      end;}
+  until (iStp=1) and (iChg=0); //alle Vergleiche richtig
+end;
+
+{ cEP prüft ob die Dateinamen "sHig" und "sLow" dieselben Werte für Kachel-ID
+  und Datum haben. "ruTle" und "ruDat" müssen aktuell sein. Die Abschnitte sind
+  getrennt. cEP muss deshalb zweimal prüfen und zählt die passenden Buchstaben }
+
+function tCover.EqualTileDat(sHig,sLow:string):boolean;
+var
+  iSeq:integer=0; //Anzahl gleiche Buchstaben
+  I:integer;
+begin
+  if length(sHig)=length(sLow) then
+  begin
+    for I:=ruTle.Ofs to pred(ruTle.Ofs+ruTle.Sze) do //Kachel-ID
+      if sLow[I]=sHig[I] then inc(iSeq);
+    for I:=ruDat.Ofs to pred(ruDat.Ofs+ruDat.Sze) do //Datum
+      if sLow[I]=sHig[I] then inc(iSeq);
+  end;
+  Result:=iSeq=ruTle.Sze+ruDat.Sze
+end;
+
+{ cEF überträgt Informationen aus dem ENVI-Haeder in einen neuen Cover-Record }
+
+function tCover.EnviCover(
+  sImg:string): //Dateiname
+  trCvr; //Rahmen
+var
+  rHdr:trHdr; //Metadaten
+begin
+  Result:=crCvr; //Vorgabe = unmöglich
+  Header.Read(rHdr,sImg);
+  Result.Crs:=ExtractWord(1,rHdr.Cys,['"']); //Projekton als Text
+  //Result.Pro:=
+  Result.Epg:=CrsInfo(sImg); //EPSG-Code
+  Result.Wdt:=rHdr.Scn;
+  Result.Hgt:=rHdr.Lin;
+  Result.Stk:=rHdr.Stk;
+  Result.Lft:=rHdr.Lon; //Koordinaten ..
+  Result.Top:=rHdr.Lat;
+  Result.Rgt:=rHdr.Lon+rHdr.Scn*rHdr.Pix;
+  Result.Btm:=rHdr.Lat-rHdr.Lin*rHdr.Pix;
+  Result.Pix:=rHdr.Pix;
+end;
+
+{ cEF überträgt Projektion und Koordinaten aus einem ENVI-Header in einen
+  "trFrm" Record. }
+
+function tCover._EnviFrame_(
+  sImg:string): //Dateiname
+  trFrm; //Rahmen
+var
+  rHdr:trHdr; //Metadaten
+begin
+  Result:=crFrm; //Vorgabe = unmöglich
+  Header.Read(rHdr,sImg);
+  Result.Crs:=ExtractWord(1,rHdr.Cys,['"']); //Projekton als Text
+  Result.Epg:=CrsInfo(sImg); //EPSG-Code
+  Result.Lft:=rHdr.Lon; //Koordinaten ..
+  Result.Top:=rHdr.Lat;
+  Result.Rgt:=rHdr.Lon+rHdr.Scn*rHdr.Pix;
+  Result.Btm:=rHdr.Lat-rHdr.Lin*rHdr.Pix;
+end;
+
+{ cWD bestimmt Position aller Underscores "_" im übergebenen Dateinamen als
+  Array. Result[0] gibt die Position des letzten Zeichen des Pfadnamens zurück,
+  Result[iDim] die Position NACH dem Ende des Namens als Übertrag. }
+
+function tCover.WordDelimiter(sNme:string):tnInt;
+var
+  iDim:integer=0; //Anzahl gefundene Delimiter
+  iOfs:integer=0; //Länge Pfadname incl. Seperator
+  I:integer;
+begin
+  iOfs:=length(ExtractFilePath(sNme)); //Länge Pfadname incl. Seperator
+  SetLength(Result,length(sNme)-iOfs); //Vorgabe = alle Buchstaben
+  Result[0]:=iOfs; //letztes Zeichen im Pfadnamen
+  for I:=succ(iOfs) to length(sNme) do
+    if sNme[I]='_' then
+    begin
+      inc(iDim);
+      Result[iDim]:=I;
+    end;
+  inc(iDim);
+  Result[iDim]:=succ(length(sNme)); //Übertrag für Ende des Namens
+  SetLength(Result,succ(iDim)) //Array abschießen
+end;
+
+{ cRF gibt Bounding-Box und CRS der Bilddaten "sImg" zurück. Dazu ruft cRF
+  "gdalinfo" auf und transformiert die Eck-Koordinaten des Bilds in eine
+  Bounding-Box. cRF übernimmt EPSG-Code und CRS-Name direkt aus dem Text.
+  Mit "bGeo=True" übergibt cRF IN JEDEM FALL geographische Koordinaten, auch
+  wenn der EPSG-Code projiziert ist. }
+
+function tCover._RasterFrame(sImg:string):trFrm; //Bilddaten => Rahmen
+const
+  cImg = 'cRF: File not available: ';
+var
+  slInf:tStringList=nil; //GDAL ImageInfo
+  I:integer;
+begin
+  Result:=crFrm; //Vorgabe = unmöglich
+  if not FileExists(sImg) then Tools.ErrorOut(3,cImg+sImg);
+
+  try
+    slInf:=TStringList.Create;
+    slInf.AddText(Gdal.ImageInfo(sImg)); //GDAL-Info übernehmen
+    for I:=0 to pred(slInf.Count) do
+    begin
+      if LeftStr(slInf[I],13)='    ID["EPSG"' then
+        Result.Epg:=StrToInt(copy(slInf[I],15,length(slInf[I])-16))
+      else if slInf[I][1]=#32 then continue; //nur linksbündige Einträge
+
+      if LeftStr(slInf[I],21)='Coordinate System is:' then
+        Result.Crs:=ExtractWord(2,slInf[succ(I)],['"'])
+      else if LeftStr(slInf[I],19)='Corner Coordinates:' then
+        ImgBonds(slInf,I,Result); //Bounding-Box wie EPSG
+    end;
+    if Result.Epg=0 then Result.Epg:=CrsInfo(sImg); //EPSG-Code
+  finally
+    slInf.Free;
+  end;
+end;
+
+// Frame an Projektion der Bilddaten anpassen.
+// bestehende Einstellungen möglichst lange nutzen
+
+function tCover.FrameWarp(sPly,sImg:string):trFrm;
+var
+  iEpg:integer; //Projektion als EPSG
+begin
+  iEpg:=Cover.CrsInfo(sImg); //Projektion der Bilddaten
+  Gdal.ImportVect(iEpg,sPly); //Vektor umprojizieren und als "vector.csv" speichern
+  Result:=VectorFrame(eeHme+cfVct) //Rahmen aus umprojizierten Vektoren
+end;
+
+{ cCS setzt in "sImg" alle Bildpixel außerhalb des Polygons "sFrm" auf NoData.
+  cCS projiziert den Rahmen "sFrm" auf das CRS von "sImg", erzeugt eine Pixel-
+  Maske [0,1] mit dem Rahmen von "sFrm" und setzt alle Pixel aßerhalb des
+  Rahmens auf NoData. }
+
+procedure tCover.xClipToShape(
+  sFrm:string; //Geometrie (ROI)
+  sImg:string); //Vorbild WIRD VERÄNDERT!
+var
+  fxBnd:tn2Sgl=nil; //Vorbild (multiband)
+  fxMsk:Tn2Sgl=nil; //Maske für ROI
+  iEpg:integer; //EPSG-Code Vorbild
+  rHdr:trHdr; //Metadaten
+  B,X,Y:integer;
+begin
+  iEpg:=Cover.CrsInfo(sImg); //Projektion der Bilddaten
+  Gdal.ImportVect(iEpg,sFrm); //Rahmen projizieren + als CSV speichern
+  Header.Read(rHdr,sImg); //für Bounding Box des Vorbilds
+  fxMsk:=Tools.Init2Single(rHdr.Lin,rHdr.Scn,0); //Maske mit Vorgabe = Null
+  Image.WriteBand(fxMsk,0,eeHme+cfMsk); //als "mask" für GDAL speichern
+  Header.WriteScalar(rHdr,eeHme+cfMsk);
+  Gdal.Rasterize(1,'',eeHme+cfMsk,eeHme+cfVct); //ROI als (1) einbrennen
+  fxMsk:=Image.ReadBand(0,rHdr,eeHme+cfMsk); //Raster-Maske [0,1] lesen
+
+  Tools.EnviRename(sImg,eeHme+'temp'); //Zwischenlager
+  Header.Read(rHdr,eeHme+'temp'); //Metadaten für Bild
+  for B:=0 to pred(rHdr.Stk) do
+  begin
+    fxBnd:=Image.ReadBand(B,rHdr,eeHme+'temp');
+    for Y:=0 to pred(rHdr.Lin) do
+      for X:=0 to pred(rHdr.Scn) do
+        if fxMsk[Y,X]<1 then //maskierte Pixel ..
+          fxBnd[Y,X]:=NaN; //.. auf NaN setzen
+    Image.WriteBand(fxBnd,B,sImg); //Vorbild ersetzen
+  end;
+  with rHdr do Header.WriteMulti(Prd,Stk,rHdr,aBnd,sImg);
+  Tools.HintOut(true,'ClipToShape: '+ExtractFileName(sImg));
+end;
+
+{ lDW bestimmt den cumulierten Abfluss über alle in "iaLnk" verknüpften Zonen
+  und gibt ihn als Zonen-Attribut zurück }
+
+function tLines.DrainWeight(
+  iaLnk:tnInt; //Zonen-Verknüpfungen (Bezug "ixIdx")
+  var rHdr:trHdr): //Metadaten der Zonen
+  tnSgl; //Cumulierter Abfluss in Hektar
+var
+  faSze:tnSgl=nil; //Fläche der Zonen in [ha]
+  pSze:^single; //Fläche der aktuellen Zone
+  iIdx:integer; //Zonen-ID
+  Z:integer;
+begin
+  Result:=Tools.InitSingle(length(iaLnk),0);
+  faSze:=Build.ZonesSize(rHdr);
+  //length(iaLnk)=length(faSze)?
+  for Z:=1 to high(iaLnk) do
+  begin
+    iIdx:=Z;
+    pSze:=@faSze[Z];
+    repeat
+      Result[iIdx]+=pSze^;
+      iIdx:=iaLnk[iIdx];
+    until iIdx=iaLnk[iIdx];
+  end;
+end;
+
+{ lDP transformiert die Pixel-Indices der Zonen-Abfluss-Punkte in "iaDrn" in
+  Welt-Koordinaten und speichert sie zusammen mit dem Abfluss und den
+  Verknüpfungen der Zonen als Attribut-Tabelle. lDL verwendet die Projektion
+  von "rHdr". lDP vergibt an Zonen ohne Abfluss Koordinaten knapp außerhalb der
+  Bounding Box nahe der NW-Ecke (Ursprung) }
+
+procedure tLines.RunoffPoints(
+  faWgt:tnSgl; //Cumulierter Abfluss
+  iaDrn:tnInt; //Pixelindex der Abfluss-Punkte
+  iaLnk:tnInt; //Verknüpfungen als Zonen-Indices
+  var rHdr:trHdr); //Metadaten Zonen-Index
+var
+  fxDrn:tn2Sgl=nil; //Abfluss-Punkte als Welt-Koordinaten
+  iScn:integer; //Bildbreite
+  pLat,pLon:^tnSgl; //simple Notation
+  Z:integer;
+begin
+  fxDrn:=Tools.Init2Single(2,succ(rHdr.Cnt),0); //Lat, Lon
+  pLat:=@fxDrn[0];
+  pLon:=@fxDrn[1];
+  iScn:=rHdr.Scn;
+  for Z:=1 to rHdr.Cnt do
+    with rHdr do
+      if iaDrn[Z]<0 then //kein Abfluss definiert
+      begin //Punkt außerhalb der Bounding-Box
+        pLat^[Z]:=Lat+Pix/2;
+        pLon^[Z]:=Lon-Pix/2;
+      end
+      else
+      begin //Welt-Koordinaten aus Pixel-Koordinaten
+        pLat^[Z]:=Lat-(iaDrn[Z] div iScn)*Pix-Pix/2;
+        pLon^[Z]:=Lon+(iaDrn[Z] mod iScn)*Pix+Pix/2;
+      end;
+
+  Tools.BitWrite(fxDrn,eeHme+cfLcy); //Koordinaten speichern + Liniendicke
+  Tools.BitInsert(faWgt,2,eeHme+cfLcy); //Fläche ergänzen
+  Tools.BitInsert(tnSgl(iaLnk),3,eeHme+cfLcy); //Verknüpfungen ergänzen
+end;
+
+{ lPC übersetzt die Abfluss-Punkte aus "legacy.bit" in Linien-Vektoren zwischen
+  je zwei Punkten uns speichert das Ergebnis als focus.csv (WKT-Format) }
+{ lPC interpretiert die Felder [0] und [1] als Koordinaten [Lat,Lon], das Feld
+  [2] als Abfluss und das Feld [3] als ID der verknüpften Zone. lPC zeichnet
+  von jedem Punkt "fxPnt[Z]" eine Linie zum Punkt "fxPnt[laLnk[Z]]" und ergänzt
+  das Feld[2] (Abfluss) als Linien-Attribut. Dabei ignoriert lPC Punkte, die in
+  "iaLnk" mit sich selbst verknüpft sind. lPC übernimmt die Projektion aus den
+  Zonen-Medataten "index.hdr" }
+
+procedure tLines.PointChain(sGrv:string);
+const
+  cCsv = 'lDL: Unable to read / write file: ';
+  cFmt = 'WKT,Integer(9.0),Integer(9.0),Real(18.1)'; //Real(24.15)
+var
+  dCsv:TextFile; //Datei
+  fxPnt:tn2Sgl=nil; //Linien-Attribute
+  iaLnk:tnInt=nil; //Verknüpfungen (integer)
+  pLat,pLon,pWgt:^tnSgl; //Zeiger auf Single-Arrays
+  sLnk:string; //Zeile in WKT-Datei
+  rHdr:trHdr; //Zonen-Metadaten
+  Z:integer;
+begin
+  //if not FileExists(eeHme+cfIdx) then
+  Header.Read(rHdr,eeHme+cfIdx); //Zonen Metadaten
+  fxPnt:=Tools.BitRead(sGrv); //Wert, Points und Attribute
+  //if length(fxPnt)<4 then SetLength ...
+  pLat:=@fxPnt[0]; //Label-Point Latitude
+  pLon:=@fxPnt[1]; //Label-Point Longitude
+  pWgt:=@fxPnt[2]; //Linien-Attribut
+  iaLnk:=tnInt(fxPnt[3]); //verknüpfte Zone (ID)
+  try
+    AssignFile(dCsv,eeHme+cfFcs);
+    {$i-} Rewrite(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+cfFcs);
+    writeln(dCsv,'WKT,source,drain,weight');
+    for Z:=1 to high(fxPnt[0]) do //alle Überlauf-Punkte
+      if (iaLnk[iaLnk[Z]]<>iaLnk[Z]) //kein Selbstbezug im Ziel
+      and (iaLnk[Z]<>Z) then //kein Selbstbezug der Quelle
+      begin
+        sLnk:='"MULTILINESTRING (('+ //Kopf
+          FloatToStr(pLon^[Z])+#32+ //von..
+          FloatToStr(pLat^[Z])+','+
+          FloatToStr(pLon^[iaLnk[Z]])+#32+ //nach..
+          FloatToStr(pLat^[iaLnk[Z]])+'))",'+
+          IntToStr(Z)+','+IntToStr(iaLnk[Z])+','+ //Zonen-IDs
+          FloatToStr(pWgt^[Z]); //cumulierte Fläche
+        writeln(dCsv,sLnk);
+      end
+  finally
+    Flush(dCsv);
+    CloseFile(dCsv);
+  end;
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.csvt'),cFmt);
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.prj'),rHdr.Cys);
+  Tools.HintOut(true,'PointChain: '+eeHme+cfFcs);
 end;
 
 end.
 
 {==============================================================================}
 
-{ lIS bestimmt Minimum und Maximum, 1%-Percentile, Mittelwert und Median sowie
-  ein cumuliertes Histogramm aus den Bilddaten von "sImg" und gibt das Ergebnis
-  als Text zurück. lIS ignoriert Nodata Pixel. }
-{ lIS nimmt "iSmp" regelmäßig vereilte Stichproben aus dem Bild. lIS zählt die
-  die gültigen Proben in "iHit" und summiert ihre Werte in "fSum". Für die
-  Statistik sortiert lIS die Liste und bildet die Kenwerte }
+{ lDL transformiert die Zonen-Abfluss-Punkte in Pixel-Koordinaten "iaDrn" in
+  Welt-Koordinaten in der Projektion von "rHdr" und speichert das Ergebnis als
+  Zonen-Attribute. Die Koordinaten bezeichnen die Pixel-Mitte }
 
-function tTable._xImageStats(
-  iSmp:integer; //Stichproben
-  sImg:string): //Vorbild
-  tStringList; //Ergebnis als Text
-const
-  cHst=64; //Stützpunkte im Histogramm
+procedure tLines.DrainLines_(
+  faWgt:tnSgl; //Cumulierter Abfluss
+  iaDrn:tnInt; //Pixelindex der Abfluss-Punkte
+  iaLnk:tnInt; //Verknüpfungen als Zonen-Indices
+  var rHdr:trHdr); //Metadaten Zonen-Index
 var
-  faVal:tnSgl=nil; //Stichproben
-  fDff:single; //Maximale Werte-Differenz
-  fPrt:single=1; //Stichproben-Distenz
-  fSum:double=0; //Summe aller Werte
-  fxBnd:tn2Sgl=nil; //Kanal aud "sImg"
-  iaHst:tnInt=nil; //Anzahl Treffer
-  iCol,iRow:integer; //Pixel-Position
-  iHit:integer; //gültige Pixel
-  iLow,iPrd:integer; //Stichproben-Intervall für Histogramm
-  rHdr:trHdr; //Metadaten
-  B,I:integer;
+  fxDrn:tn2Sgl=nil; //Abfluss-Punkte als Welt-Koordinaten
+  iScn:integer; //Bildbreite
+  pLat,pLon:^tnSgl; //simple Notation
+  Z:integer;
 begin
-  Result:=tStringList.Create;
-  Header.Read(rHdr,sImg); //Metadaten Zellindex
-  SetLength(faVal,min(iSmp,rHdr.Lin*rHdr.Scn));
-  fPrt:=rHdr.Lin*rHdr.Scn/iSmp; //Stichproben-Distanz in Pixeln
-  for B:=0 to pred(rHdr.Stk) do //Kanäle einzeln
-  begin
-    fxBnd:=Image.ReadBand(B,rHdr,sImg);
-    fSum:=0; //Vorgabe
-    iHit:=0; //Vorgabe
-    for I:=0 to high(faVal) do
-    begin
-      iCol:=trunc(fPrt*I) mod rHdr.Scn;
-      iRow:=trunc(fPrt*I) div rHdr.Scn;
-      if isNan(fxBnd[iRow,iCol]) then continue;
-      faVal[iHit]:=fxBnd[iRow,iCol];
-      fSum+=faVal[iHit];
-      inc(iHit)
+  fxDrn:=Tools.Init2Single(2,succ(rHdr.Cnt),0); //Lat, Lon, Wgt
+  pLat:=@fxDrn[0];
+  pLon:=@fxDrn[1];
+  iScn:=rHdr.Scn;
+  for Z:=1 to rHdr.Cnt do
+    with rHdr do
+    begin //Welt-Koordinaten aus Pixel-Koordinaten
+      pLat^[Z]:=Lat-(iaDrn[Z] div iScn)*Pix-Pix/2;
+      pLon^[Z]:=Lon+(iaDrn[Z] mod iScn)*Pix+Pix/2;
     end;
-    Reduce.QuickSort(faVal,iHit);
-    Result.Add('Band: '+ExtractWord(succ(B),rHdr.aBnd,[#10]));
-    Result.Add(#9'Min  '#9+FloatToStrF(faVal[0],ffFixed,7,4));
-    Result.Add(#9'Low  '#9+FloatToStrF(faVal[round(iHit*0.01)],ffFixed,7,4));
-    Result.Add(#9'Mean '#9+FloatToStrF(fSum/iHit,ffFixed,7,4));
-    Result.Add(#9'Median'#9+FloatToStrF(faVal[round(iHit*0.50)],ffFixed,7,4));
-    Result.Add(#9'High '#9+FloatToStrF(faVal[round(iHit*0.99)],ffFixed,7,4));
-    Result.Add(#9'Max  '#9+FloatToStrF(faVal[pred(iHit)],ffFixed,7,4));
-    iLow:=round(iHit*0.01); //eingeschränktes Intervall
-    iPrd:=round(iHit*0.99)-iLow; //Intervall-Länge
-    iaHst:=Tools.InitInteger(succ(cHst),0); //Anzahl Treffer
-    fDff:=faVal[iLow+iPrd]-faVal[iLow]; //Werte-Differenz
-    for I:=iLow to pred(iLow+iPrd) do
-      inc(iaHst[trunc((faVal[I]-faVal[iLow])/fDff*cHst)]);
-    Result.Add('Histogramm:');
-    for I:=0 to cHst do
-      //Result.Add(#9+IntToStr(I)+#9+IntToStr(iaHst[I]));
-      Result.Add(#9+FloatToStrF(faVal[iLow+trunc(iPrd/cHst*I)],ffFixed,7,4)+
-        #9+IntToStr(iaHst[I]));
-    Tools.HintOut(true,'table.ImageStats '+IntToStr(succ(B))); //Fortschritt
-  end;
-  Result.SaveToFile(eeHme+cfTab)
+  Tools.BitWrite(fxDrn,eeHme+cfLcy); //Koordinaten speichern + Liniendicke
+  Tools.BitInsert(faWgt,2,eeHme+cfLcy); //Fläche ergänzen
+  Tools.BitInsert(tnSgl(iaLnk),3,eeHme+cfLcy); //Verknüpfungen ergänzen
 end;
 
-{ cCr transformiert das Polygon aus "sFrm" in einen Rahmen mit der Projektion
-  "iEpg". Wenn kein Rahmen angegeben wurde, bildet cCr einen Rahmen aus allen
-  Bildern in "slImg" }
+{ lPC übersetzt die "gravity.bit" Attribute in Linien-Vektoren im WKT-Format }
+{ lPC interpretiert das Feld[0] als Höhe (Attribut) der Zonen, die Felder[1,2]
+  als Koordinaten der Label-Punkte, das Feld[3] als ID der verknüpften Zone und
+  das Feld[4] als cumulierten Abfluss. lPC übernimmt das Koordinatensystem aus
+  den aktuellen Zonen "index.hdr" }
 
-function tCover.xCover_(
-  iEpg:integer; //Koordinatensystem als EPSG-Code ODER leer für unverändert
-  sFrm:string; //Rahmen für alle Ausschnitte ODER leer für "alles verwenden"
-  slImg:tStringList): //Namen aller Bilder
-  trFrm; //Rahmen für alle Bilder
+procedure tLines.PointChain_(sGrv:string);
 const
-  cImg = 'cCt: Either a polygon or a list of images must be submitted!';
+  cCsv = 'lDL: Unable to read / write file: ';
+  cFmt = 'WKT,Integer(9.0),Integer(9.0),Real(18.1)'; //Real(24.15)
 var
-  rHdr:trHdr; //Metadaten
-  I:integer;
+  dCsv:TextFile; //Datei
+  fxPnt:tn2Sgl=nil; //Linien-Attribute
+  iaLnk:tnInt=nil; //Verknüpfungen (integer)
+  pLat,pLon,pWgt:^tnSgl; //Zeiger auf Single-Arrays
+  sLnk:string; //Zeile in WKT-Datei
+  rHdr:trHdr; //Zonen-Metadaten
+  Z:integer;
 begin
-  if length(sFrm)>0 then
-    Result:=Cover.VectorCrsFrame(iEpg,sFrm) //Rahmen aus Eingabe
-  else if slImg.Count>0 then
-  begin
-    Result:=crFrm; //Vorgabe
-    for I:=0 to pred(slImg.Count) do //Rahmen aus allen Bildern
+  //if not FileExists(eeHme+cfIdx) then
+  Header.Read(rHdr,eeHme+cfIdx); //Zonen Metadaten
+  fxPnt:=Tools.BitRead(sGrv); //Wert, Points und Attribute
+  //if length(fxPnt)<4 then SetLength ...
+  pLat:=@fxPnt[0]; //Label-Point Latitude
+  pLon:=@fxPnt[1]; //Label-Point Longitude
+  pWgt:=@fxPnt[2]; //Linien-Attribut
+  iaLnk:=tnInt(fxPnt[3]); //verknüpfte Zone (ID)
+  try
+    AssignFile(dCsv,eeHme+cfFcs);
+    {$i-} Rewrite(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+cfFcs);
+    writeln(dCsv,'WKT,source,drain,weight');
+    for Z:=1 to high(fxPnt[0]) do //alle Überlauf-Punkte
+      if iaLnk[Z]>0 then
       begin
-        Header.Read(rHdr,slImg[I]);
-        Result.Lft:=min(rHdr.Lon,Result.Lft);
-        Result.Top:=max(rHdr.Lat,Result.Top);
-        Result.Rgt:=max(rHdr.Lon+rHdr.Scn*rHdr.Pix,Result.Rgt);
-        Result.Btm:=min(rHdr.Lat-rHdr.Lin*rHdr.Pix,Result.Btm);
-      end;
-  end
-  else Tools.ErrorOut(3,cImg);
+        sLnk:='"MULTILINESTRING (('+ //Kopf
+          FloatToStr(pLon^[Z])+#32+ //von..
+          FloatToStr(pLat^[Z])+','+
+          FloatToStr(pLon^[iaLnk[Z]])+#32+ //nach..
+          FloatToStr(pLat^[iaLnk[Z]])+'))",'+
+          IntToStr(Z)+','+IntToStr(iaLnk[Z])+','+ //Zonen-IDs
+          FloatToStr(pWgt^[Z]); //cumulierte Fläche
+        writeln(dCsv,sLnk);
+      end
+  finally
+    Flush(dCsv);
+    CloseFile(dCsv);
+  end; //of try ..
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.csvt'),cFmt);
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.prj'),rHdr.Cys);
+  Tools.HintOut(true,'PointChain: '+eeHme+cfFcs);
+end;
+
+{ lDW bestimmt den cumulierten Abfluss über alle in "iaLnk" verknüpften Zonen
+  und gibt ihn als Zonen-Attribut zurück }
+
+function tLines._LinkWeight(
+  iaLnk:tnInt; //Zonen-Verknüpfungen (Bezug "ixIdx")
+  var rHdr:trHdr): //Metadaten der Zonen
+  tnSgl; //Cumulierter Abfluss in Hektar
+var
+  faSze:tnSgl=nil; //Fläche der Zonen in [ha]
+  fSze:single; //abnehmender Abfluss
+  iIdx:integer; //Zonen-ID
+  Z:integer;
+begin
+  Result:=Tools.InitSingle(length(iaLnk),0);
+  faSze:=Build.ZonesSize(rHdr);
+  //length(iaLnk)=length(faSze)?
+  for Z:=1 to high(iaLnk) do
+  begin
+    iIdx:=Z;
+    fSze:=faSze[Z];
+    repeat
+      Result[iIdx]+=fSze;
+      fSze:=fSze*0.9;
+      iIdx:=iaLnk[iIdx];
+    until iIdx=iaLnk[iIdx];
+  end;
+end;
+
+{ lPC übersetzt die "gravity.bit" Attribute in Linien-Vektoren im WKT-Format }
+{ lPC interpretiert das Feld[0] als Höhe (Attribut) der Zonen, die Felder[1,2]
+  als Koordinaten der Label-Punkte, das Feld[3] als ID der verknüpften Zone und
+  das Feld[4] als cumulierten Abfluss. lPC zeichnet für jede Zone eine Linie
+  von ihrem Abfluss-Punkt zum Abfluss-Punkt der in "iaLnk" verknüpften Zone und
+  ergänzt "fxPnt[4]" als Attribut für die Linienbreite. lPC ignoriert Punkte
+  mit den Koordinaten [-1,-1]. lPC übernimmt das Koordinatensystem aus den
+  Zonen-Medataten "index.hdr" }
+
+procedure tLines.PointChain_(sGrv:string);
+const
+  cCsv = 'lDL: Unable to read / write file: ';
+  cFmt = 'WKT,Integer(9.0),Integer(9.0),Real(18.1)'; //Real(24.15)
+var
+  dCsv:TextFile; //Datei
+  fxPnt:tn2Sgl=nil; //Linien-Attribute
+  iaLnk:tnInt=nil; //Verknüpfungen (integer)
+  pLat,pLon,pWgt:^tnSgl; //Zeiger auf Single-Arrays
+  sLnk:string; //Zeile in WKT-Datei
+  rHdr:trHdr; //Zonen-Metadaten
+  Z:integer;
+begin
+  //if not FileExists(eeHme+cfIdx) then
+  Header.Read(rHdr,eeHme+cfIdx); //Zonen Metadaten
+  fxPnt:=Tools.BitRead(sGrv); //Wert, Points und Attribute
+  //if length(fxPnt)<4 then SetLength ...
+  pLat:=@fxPnt[0]; //Label-Point Latitude
+  pLon:=@fxPnt[1]; //Label-Point Longitude
+  pWgt:=@fxPnt[2]; //Linien-Attribut
+  iaLnk:=tnInt(fxPnt[3]); //verknüpfte Zone (ID)
+  try
+    AssignFile(dCsv,eeHme+cfFcs);
+    {$i-} Rewrite(dCsv); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(3,cCsv+cfFcs);
+    writeln(dCsv,'WKT,source,drain,weight');
+    for Z:=1 to high(fxPnt[0]) do //alle Überlauf-Punkte
+      if (pLon^[Z]<>-1) and (pLat^[Z]<>-1) then
+        if iaLnk[Z]>0 then
+        begin
+          sLnk:='"MULTILINESTRING (('+ //Kopf
+            FloatToStr(pLon^[Z])+#32+ //von..
+            FloatToStr(pLat^[Z])+','+
+            FloatToStr(pLon^[iaLnk[Z]])+#32+ //nach..
+            FloatToStr(pLat^[iaLnk[Z]])+'))",'+
+            IntToStr(Z)+','+IntToStr(iaLnk[Z])+','+ //Zonen-IDs
+            FloatToStr(pWgt^[Z]); //cumulierte Fläche
+          writeln(dCsv,sLnk);
+        end
+  finally
+    Flush(dCsv);
+    CloseFile(dCsv);
+  end;
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.csvt'),cFmt);
+  Tools.TextOut(ChangeFileExt(eeHme+cfFcs,'.prj'),rHdr.Cys);
+  Tools.HintOut(true,'PointChain: '+eeHme+cfFcs);
 end;
 

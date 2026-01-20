@@ -31,7 +31,8 @@ unit format;
   y* = Funktion, Procedur als Variable
   z* = Zeiger auf Dimension
 
-  cc*, rr*, ss* .. Verdopplung wenn in Klasse definiert }
+  cc*, rr*, ss* .. Verdopplung wenn global definiert
+  cf*, cm* .. wenn für unit definiert }
 
 { FORMELN:
   - Varianz = (∑x²-(∑x)²/n)/(n-1)
@@ -82,202 +83,71 @@ unit format;
    - Tabellen: BIT-Format für Zonen-Attribute, CSV für Statistik }
 
 { KANAL-NAMEN:
+   - Sensor (S2, L8, ..),
    - Ort (geografisch, Projekt ..)
    - Qualität (bands, thermal, NirV, ..)
    - Spezifikation (Regression, Median, ..)
-   - Sensor (S2, L8, ..), Datum [YYYYMMDD]
+   - Datum [YYYYMMDD] immer am Ende
    - getrennt durch Underscore }
 
-{ AKTUELLE VERÄNDERUNGEN:
-   → Zonen:
-      - völlig neu gestalteter Prozess
-      - innerhalb einer Zone ist die Varianz minimal
-      - Kontrast an Grenzen nur indirekt bewertet
-      - Suche nach lokalen Minimum zwischen zwei Zonen
-      - eindeutige Paare werden vereinigt
-      - Prozess iteriert
-      - zu Beginn Pixel=Zonen
-      - Abbruch wenn mittlere Zonen-Größe Schwelle erreicht
-      - sehr kleine Zonen (wenige Pixel) können unterdrückt werden
-      - "bonds=accurate" übernimmt Klassen-Grenzen als Zonen
-   → Zonen als Kernel:
-      - Pixel innerhalb einer kleinen Fläche vergleichen
-      - üblich innerhalb eines quadratischen Fensters
-      - in Imalys innerhalb einer Zone
-      - quadratische Fenster wirken als Weichzeichner
-      - Zonen berücksichtigen natürliche Grenzen
-      - Kleine Strukturen werden erfasst
-      - alle Kanäle getrennt berechnet
-      - am Ende Hauptkomponente
-   → Diversität erweitert
-      - a-Diversität innerhalb abgegrenzter Objekten
-      - ß-Diversität zwischen abgegrenzten Objekten
-      - spektrale und morphologische Diversität
-   → Datum im Kanal-Namen
-      - Trends und Perioden benötigen das Datum der Aufnahme
-      - Imalys schreibt Datum an das Ende der Kanal-Namen
-      - Werden Bilder gestapelt, übernimmt "Compile" die Datums-Angaben in die
-        Metadaten.
-      - WICHTIG wenn externe Formate (TIFF) verwendet wird
-   → Flächen:
-      - Flächen Attribut in [ha]
-      - Proportion: Verhältnis eigene Fläche / Mittelwert aller Nachbarn
-   → Compile.Frame:
-      - "frame" unter "compile" setzt alle Bildteile auf NoData die außerhalb
-        eines übergebenen Polygons liegen
-   → Compile.Projection:
-      - schreibt die Projektion aus einem Vorbild in ein beliebiges Bild
-   → Reduce.Brightness:
-      - bestimmt NUR die erste Hauptkomponente als "Helligkeit".
-      - Brightness ist durch eigenen Befehl von "Principal" getrennt
-   → Mapping.Equalize:
-      - gleiche Wertebereiche für alle Attribute ← nur Zonen
-   → Mapping.FabricMap:
-      - zwei Optionen: Klassen oder Merkmale räumlich kombinieren
-      - Klassen: alle unmittelbaren Nachbar-Zonen
-      - Merkmale: lokale Dichte aller Merkmale als zusätzliches Kriterium
-   → Compile.Difference:
-      - benötigt genau zwei Bildnamen
-   → Compile.Retain:
-      - entscheidet ob bei der Reduktion von Bilder-Stapeln ob die Kanäle
-        zusammengefasst und das Datum der Bilder bewahrt wird oder umgekehrt
-      - in beiden Fällen wird ein multispektrales Bild zurückgegeben
-   → Reduce.Bestof:
-      - bei zwei Bildern nur dann Mittelwert wählen wenn beide >= 99% Abdeckung,
-        sonst Bild mit größerer Abdeckung
-   → Parse.Home:
-      - Protokolle durch gemeinsame Angabe "Datum/Uhrzeit" verknüpft
-   → Parse.Replace:
-      - Variable können als arrays (kommagetrennt) eingegeben werden
-      - jede Spalte wiederholt die Prozesskette
-      - mehr als eine Variable kann wechseln
-   → Tools.ErrorOut:
-      - typisierte Fehlerabfrage
-      - Abbruch wahlweise für einzelne Prozesse oder Befehle
-   → xImalys:
-      - neuer Start-Befehl zusammen mit "Parse.Replace"
-   → xImalys -c:
-      - Arbeitsverzeichnis leeren
-      - wenn Teilergebnisse gesammelt werden sollen
-   → Build.xFeatures:
-      - verwendet Varianz, nicht Distanz der Zellen-Merkmale
-      - alle Kontakte (auch innere) verwendet
-   → Parse.NoQuality
-      - schreibt eine Vorgabe für Kanäle ohne Qualitätsangabe
-   → Archive.Import(Landsat|RapidEye|Aster)
-      - importiert mit fest eingestellten Parametern
-      - Archive.ImportDefault für Handbetrieb
-      - Parameter "sensor=.." ergänzt
-   → Drain.xBasins
-      - syntheischer Abfluss aus Höhendaten
-      - Micro-Catchments = Ebenen + lokale Minima als Basis
-      - Abfluss als Vektor-Schema
-      - Einzugsgebiete von jedem beliebigen Punkt
-      - Stofftransport-Modul
-   → Thema.Reduce.Execute:
-      - neue Fuktionen:
-      - Maximum: höchster Wert aus einer Zeitreihe für alle Pixel
-      - Minumum: niedrigster ...
-      - Range: maximale Distanz zwischen Maximum und Minimum
-      - alle: Max/Min für alle Kanäle getrennt gebildet ← Brightness für einen Kanal
-   → Raster.Calculate:
-      - Kanäle arithmetisch kombinieren
-      - auch Konstante möglich
-      - beliebig lange Prozessketten
-      - keine Klammern
-   → Reduce.Vegettionsindex:
-      - Kanal-Auswahl vereinfacht: "B3:B4" für Red=3 und Nir=4
-   → Parse.xLoop:
-      - Parameter können als Listen mit Kommas übergeben werden. Die Prozess-
-        Kette wird für jeden Parameter wiederholt. Wenn sich mehr als ein
-        Parameter ändert, müssen die Listen zusammenpassen.
-   → Fehlerbehandlung:
-      - drei Fehler-Objekte für Abbruch Programms, Kette, Befehl
-   → Parse.Catalog:
-      - Imalys erfasst für Landsat-Archive die vier Ecken der Bilddaten und
-        speichert sie in einer Archiv-Liste zur Auswahl passender Szenen. Die
-        Archiv-Liste ist als WKT Datei formatiert und kann im GIS angezeigt
-        werden.
-   → Parse.Compile:
-      - intern drei verschiedene Proceduren "compile", "mosaic" und "stack"
-      - kann Bilder in zahlreichen Formaten lesen
-      - wenn Projektion und Pixelgröße angegeben sind, transformiert "Compile"
-        alle Bilder entsprechend den Angaben.
-      - Wenn die Bilder unerschiedliche Bereiche des übergebenen ROI abdecken,
-        kombiniert "Compile" die Bilder entsprechend ihrer Lage und beschneidet
-        das Ergebnis auf den ROI.
-      - "Compile" überschreibt Teilbilder mit gleichem Aufnahmedatum zu einem
-        Bild. Für Bilder mit unterschiedlichem Datum bildet "Compile" neue
-        Ebenen.
-      - alle Prozesse ignorieren NoData Pixel.
-   → Parse.Mosaic:
-      - Wird von "Compile" mit dem Attribut "flat" aufgerufen. "Mosaic"
-        speichert alle Teilbilder in einer Ebene und überschreibt Bildbereiche
-        die sich überlappen. Dabei ifgnoriert "Mosaic" NoData Bereiche.
-   → Process-Chain:
-      - ALLE Imalys Befehle akzeptieren NUR Daten aus dem Arbeits-Verzeichnis
-        und speichern ihre Ergebnisse im Arbeits-Verzeichnis. "Compile" holt
-        beliebige Bilddaten in das Arbeits-Verzeichnis, "Export" schreibt sie
-        an einen anderen Ort.
-      - Compile harmonisiert die Bilder so dass Imalys-Befehle nur noch wenige
-        Prüfungen durchführen müssen. Innerhalb des Arbets-Verzeichnis sind die
-        Daten frei kombinierbar.
-   → Gdal.Warp:
-      - Name der Ziel-Datei kann direkt gewählt werden
-      - Pixel werden auf ein ganzzahliges Vielfaches der Pixelgröße verschoeben
-   → Gdal.Import:
-      - der Name der Ziel-Datei kann direkt gewählt werden
-   → Cover.ClipToShape:
-      - Ein Bild kann auch nachträglich auf die Form einer Maske reduziert
-        werden. Maskierte Bereiche werden auf NoData gesetzt
-   → Parse.Import:
-      - "Import" kann Bildfehler aus einer Maske als NoData auf das Ergebnis
-        übertragen. "Import" trägt den Anteil klarar Pixel in den IDL-Header
-        ein.
-      - "Import" benötigt die erweiterte Archiv-Liste mit Polygonen.
-   → Parse.Flatten:
-      - "Reduce" kann einfache arithmetische Ausdrücke oder Konstante auf alle
-        Bildpixel anwenden. Die Formel wird als Text übergeben.
-      - "<" und ">" erzeugen Masken [0,1].
-      - "Maximum" und "Minimum" bestimmen den größten oder kleinsten Wert einer
-        Auswahl von Kanälen.
-      - "Range" bestimmt den Wertebereich (Maximum-Minimum) in einem beliebigen
-        Blder-Stapel
-   → Parse.RunOff:
-      - das hydrologische Abfluss-Modell aus Höhendaten wurde reaktiviert.
-   → Flatten.Quality:
-      - Bild mit der Anzahl klarer Bildebenen pro Pixel
-   → Parse.Compile.Flat:
-      - Große Mosaike 10 Mio Pixel aus optimierten Teilen zusammensetzen.
-        Überlappende Teile werden überschrieben
-   → Parse.Compile:
-      - Erweiterung für Import von nur einem Bild ohne Veränderungen
-   → Table.Focus:
-      - Bildmerkmale auf ein regelmäßiges Gitter abbilden
-      - NoData Pixel werden ignoriert
-      - Merkmale werden gemittelt
-      - Min/Max/Var vorgesehen
-   → Table.ImageStats:
-      - Minimum, Maximum, 1%-Percentile, Mittelwert, Median und Histogramm aus
-        Bilddaten
-   → Model.RolfFocus:
-      - klassifiziert Spektralkombinationen entsprechend der Distanz im
-        Merkmalsraum. Die Anzahl der Klassen ist wählbar. Die Klassen werden
-        mit Stichproben laufend optimiert. Der Algorithmus ist schnell! }
-
-{ PROJEKTE:
-  → nur Landsat-Archive können automatisch importiert werden
-  → Stichproben für Klassifikation über zahlreiche Bilder sammeln
-  → Indikator "Farbig ←→ Farblos" aus Varianz der Kanäle
-  → stabile Perioden in Zeitreihe suchen ← "Parse.Breaks"
-  → Konverter: Protokoll → Command-Chain
-  → Polygone glätten
-     - Pixel-Grenzen erfassen ← immer genau zwei Zonen (incl. Null)
-     - Indices der Pixel-Ecken als Koordinaten verwenden
-     - jede Zonen-Kombination erfassen und sortieren
-     - binäre Suche nach Ketten ← mehr als eine möglich
-     - Linien mit echten Koordinaten bilden
-     - Glätten mit Diffusion ← Knoten bleiben fixiert }
+{ VERÄNDERUNGEN:
+   250511: PARSE.Import: Auswahl passender Archve von der Extraktion entkoppelt
+           ← Archive können nach belieben manuell und aus dem Katalog gewählt
+           werden → Bounding-Box aus Raster-Eckpunkten → Eckpunkte aus "gdal-
+           info" → Neu: Cover.Intersect → Bounding-Box nach Transformation der
+           Exkpunkte bestimmen
+   250522: COVER.RasterFrame: Überlappung nahe Null zwishen ROI und Bildkachel
+           kann zu Nulldivision führen → Minimale Überlappung erzwingen
+   250603: PARSE.Catalog: auch aus Sammlung von extrahierten Bilddaten, sonst
+           wie Archive. RasterCover kann wahlweise geographiche oder
+           projizierte Koordinaten übergeben
+   250620  PARSE.Compile: vereinigt Bilder mit gleichem Datum NUR wenn "merge"
+           auf "true" gesetzt ist ← innere Logit führt sonst zu Widersprüchen!
+   250626  PARSE.Import: Faktor und Offset können als CSV für alle Kanäle
+           getrennt übergeben werden.
+   250628  PARSE.Compile: automatisch vergebene Kanal-Namen können durch
+           Eingabe im CSV-Format ersetzt werden
+   250904  MODEL.Legacy verknüpft jede Zone mit genau einer anderen. Die
+           Verknüpfungen verwenden wahlweise den lokal größten oder kleinsten
+           Werteines frei wählbaren Attributs. Legacy kann aus einem Höhen-
+           Modell den natürlichen Wasser-Abfluss bestimmen oder Zonen mit
+           gemeinsamen Merkmalen zusammenfassen, wenn die Merkmale stark
+           streuen
+   250906  BUILD.EqualFeatures und FILTER.EqualImages normalisieren Attribute
+           und Bilddaten auf den Wertebereich [0..1]. Die Grenzwerte werden in
+           beiden Fällen durch Percentile bestimmt.
+   250918  COMPARE.Distribution erzeugt Tabellen mit der Häufigkeit aller
+           Zonen-Attribute in verscheidenen Klassen. Die Klassen werden von
+           einer Vektor-Referenz mit passendem Attribut übernommen. Die
+           Ergebnisse sind Tab-getrennte Text-Tabellen mit Schwellen und Median
+           für alle Attribut-Klassen-Kombinationen
+   250929  REDUCE.xIntensity verknüpft Minimum, Maximum und Range in einem
+           Drei-Layer-Bild
+   251118  PARSE.Import ersetzt. Auswahl geeigneter Kacheln über Kachel-ID für
+           alle Sensoren (Archive.xSelectLandsat, Archive.xSelectSentinel),
+           Zwischenlager für die extrahierten Layer ist das rbeisverzeichnis.
+           "Archive.xQualityMask" wird zum eigenständigen Programm, akzeptierte
+           Kanäle werden transformiert, geschnitten und kalibriert aber nicht
+           projiziert (Archive.xBandsImport, Filter.xBandsCalibrate)
+   251128  PARSE.Compile ersetzt: Bilder mit beliebigem Format werden im ENVI-
+           Format gespeichert. Dabei werden sie transformiert, beschnitten,
+           projiziert und die Kanäle gefiltert. Alle Ergebnisse bekommen exakt
+           denselben Ausschnitt. Kanäle mit gleichem Datum (Flugpfad) werden
+           vereinigt und alle Bilder gestackt. Kanal-Namen können überschrieben
+           werden. Pixel außerhalb des Frames können auf NoData gesetzt werden.
+           Die NoData-Defiition kann erweitert werden.
+   251222  ZONES.Elevation erzeugt Micro-Catchments aus einem Höhenmodell und
+           speichert sie als Zonen.
+   251222  MAPPING.Runoff überarbeitet: Außer dem Höhenmodell und dem Selektor
+           für Abfluss am Bildrand [ja|nein] sind keine Eingaben notwendig. Der
+           Prozess setzt DrainPoints am Rand der Micro-Catchments, verknüpft
+           sie zu immer größeren Einzugsgebieten, bestimmt den Abfluss als
+           entwässerte Fläche und zeichnet ihn als Vaktor-Linie.
+   260112  MODEL.xZonesMap und MODEL.xFabricMap angepasst. xZonesMap speichert
+           ein isoliertes Klassen-Attribut als "mapindex.bit" im Arbeits-
+           Speicher, xFabricMap übernimmt es und erzeugt damit seine Attribut-
+           Tabelle "context.bit" für Kontakte zwischen Klassen. Die Zonen-
+           Attribute werden nicht verändert }
 
 { STATISTIK:
    → ca. 15.000 Zeilen
@@ -292,44 +162,50 @@ uses
 
 const
   //Commands = Prozess-Namen
-  cfAcy = 'accuracy'; //Klassen-Kontroll-Bild
+  cfAcy = 'accuracy.tab'; //Klassen-Kontroll-Bild
   cfAlp = 'alpha'; //Bild mit Alpha-Kanal am Ende
   cfAtr = 'index.bit'; //Zellindex-Attribute
   cfBit = '.bit'; //Binary Table Extension
   //cfBnd = 'boundaries'; //Grenzen zwischen Zonen
   cfBrt = 'brightness'; //erste Hauptkomponente als gemeinsame Dichte
   cfBst = 'bestof'; //Median – Mean – Defined
-  cfCbn = 'combination.tab'; //Häufigkeit Cluster in Referenzen ← ALS LINK SPEICHERN
   cfClc = 'calculate'; //Ergebnis einer Kanal-Arithmetik
   cfCmd = 'commands.log'; //aktuelle Befehlskette
   cfCpl = 'compile'; //Ergebnis Bild-Kombination
+  cfCre = 'compare.tab'; //Häufigkeit Cluster in Referenzen ← ALS LINK SPEICHERN
+  cfCst = 'cluster'; //Clusterung zum Vergleich
   cfCtm = 'catchments'; //Einzugsgebiete
-  cfCtx = 'context.bit'; //erweiterte Attribut-Tabelle
+  cfCtx = 'context.bit'; //Attribut-Tabelle für Kontakte
   cfDdr = 'dendrites'; //dendritische Zellform
+  cfDrn = 'drainlines'; //Abfluss als Vektor-Graphik
   cfDst = 'distance'; //kleinste Distanz zu Maske
-  cfDvn = 'deviation'; //Gauß'sche Abweichung
+  //cfDvn = 'deviation'; //Gauß'sche Abweichung
   cfDvs = 'diversity'; //Rao's Q-Index für Zellen
   cfErr = 'error.log'; //Fehler + Warnungen
   cfEtp = 'entropy'; //Rao's Q-Index für Pixel-Klassen
   cfEql = 'equal.bit'; //Attribute mit normalisierten Werten
   cfExt = '.aux.xml'; //Extension für qGis Erweiterungen
-  //cfFbr = 'fabric'; //Muster-Klassen
+  cfEvi = 'EVI'; //erweiterter Vegetationsindex
+  cfFbr = 'fabric'; //Muster-Klassen
   cfFcs = 'focus.csv'; //Vektoren nach Bearbeitung
+  cfFrq = 'frequency.bit'; //Attribute aus Klassen-Häufigkeit
   cfGml = '.gml'; //Geographic Markup Language
   cfHdr = '.hdr'; //Raw-Binary mit ENVI-Header
   cfHry = 'history'; //Zeitreihe aus Hauptkomponenten
   cfHse = 'hillshade'; //Beleuchtung
   cfHsv = 'HSV'; //HSV Bildcodierung für RGB
   cfIdm = 'inverse'; //Inverse Difference Moment
-  cfIdx = 'index'; //Imalys Zellindex
+  cfIdx = 'index'; //Zonen-Index (Raster)
   cfImp = 'import'; //GDAL Import im ENVI-Format
   cfItf = 'interflow'; //Durchlauf, Austausch eines Merkmals
   cfKey = 'keys.bit'; //Modell aus Keys (Verknüpfungen)
-  cfLai = 'leafarea'; //Leaf Area Index Näherung
+  cfLai = 'LAI'; //Leaf Area Index Näherung
+  cfLcy = 'legacy.bit'; //Attribit für regionale Dichte
   cfLmt = 'limits'; //Schwellwert-Ergebnis als Klassen
   //cfLnk = 'links.bit'; //Verknüpfung der Mikro-Catchments
   cfLow = 'lowpass'; //Kontrast-Reduktion (Emulation)
   cfLpc = 'laplace'; //Laplace-Kernel
+  cfLui = 'intensity'; //Landuse-Intensity-Proxy
   cfMap = 'mapping'; //Klassen-Layer aus Modell
   cfMax = 'maximum'; //größter Wert in einem Stapel
   cfMdl = 'model.bit'; //Feature-Modell
@@ -337,8 +213,10 @@ const
   cfMea = 'mean'; //Mittelwert
   cfMic = 'micro'; //Catchments aus lokalen Minima
   cfMin = 'minimum'; //kleinster Wert in einem Stapel
+  cfMix = 'mapindex.bit'; //Klassen-ID der Zonen als Zwischenlager
   cfMrg = 'merge'; //multispektrale Kacheln verknüpfen
-  cfMsk = 'mask'; //Maske = binär ja/nein
+  cfMsk = 'mask'; //Maske = binär oder fortlaufende Klassen-ID
+  cfNbu = 'NDBI'; //normalized Build-Up Index
   cfNrm = 'normal'; //normalisierte Textur
   cfNiv = 'NIRV'; //Near Infrared Vegetation Index
   cfNvi = 'NDVI'; //normalisierter Vegetationsindex
@@ -351,9 +229,8 @@ const
   cfRfz = 'reference'; //Raster-Bild mit Referenz-Werten (thematisch)
   cfRgs = 'regression'; //Regression über Kanäle
   cfRlt = 'relation'; //Zell-Umfang durch Kontakte
-  cfRnf = 'runoff'; //Abfluss als Tabelle
-  cfRng = 'range'; //Wertebereich
-  cfRog = 'roughness'; //spektrale Rauhigkeit
+  cfRnf = 'runoff'; //Abfluss als Zonen-Attribute
+  //cfRog = 'roughness'; //spektrale Rauhigkeit
   cfRst = 'raster'; //Endprodukt des Bildimports
   cfSlc = 'selection.txt'; //Namen ausgewählter Bilder
   cfSmp = 'samples'; //Stichproben, Varianten mit gleichen Merkmalen
@@ -361,28 +238,25 @@ const
   cfStk = 'stack'; //Zwischenergebnis bei Layer-Manipulation
   cfSze = 'cellsize'; //Fläche der Zellen in Pixeln
   cfTab = 'table.csv'; //Tablle im Textformat (tab-getrennt)
-  cfThm = 'thema'; //überwachte Klassifikation
+  cfThm = 'thema'; //Klassen-Bild aus Referenzen
   cfTpl = 'topology.bit'; //Zell-Topologie
+  cfTrf = 'transform'; //Zwischenprodukt
   cfTxr = 'texture'; //Bild nach Textur-Filterung
   cfVal = 'values'; //Bild aus Zell-Attributen
   cfVct = 'vector.csv'; //Vektor-Import als CSV
   cfVrc = 'variance'; //Bild mit Gauß-Abweichung einzelner Pixel
   cfWrp = 'warp'; //Ergebnis einer Pixel-Transformation
   cfWgt = 'weight'; //globale Summe <> Hauptkomponente
-  //cfZne = 'zones': //für zonale Atribute
+  cfZne = 'zones'; //Polygone mit Attributen
 
   cfByt:array[0..15] of byte = (0, 1,2,4,4,8, 8,0,0,0,0, 0,2,4,8,8); //Byte pro ENVI-Typ
 
-  eeExc:string = '/home/c7sepe2/Pascal/Modules/x_Imalys';
   eeGdl:string = '/usr/bin/'; //gdal-Befehle
-  eeHme:string = '/home/c7sepe2/.imalys/'; //Arbeitsverzeichnis Vorgabe
-{ TODO: "eeExc" und "eeHme" müssen vom Anwender abhängig werden }
-  eeLog:string = '/home/c7sepe2/.imalys/'; //Ergebnisse + Protokolle ← Vorgabe MUSS geändert werden
+  eeHme:string = 'dummy';
+  eeLog:string = 'dummy';
   eeNow:string = ''; //Datum:Uhrzeit der Prozessierung
 
-  ccAls = '$'+DirectorySeparator; //Alias für Arbeitsverzeichnis
   ccPrt = #10'___________________________________________________________'#10;
-
   ccPrj = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,'+
     '298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],'+
     'PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",'+
@@ -439,13 +313,14 @@ type
     Btm:double;
     Pix:double; //Pixelgröße
   end; //vgl: trFrm
+  tpCvr = ^trCvr; //typisierter Zeiger
 { ==> _crCvr aktualisieren }
 
   trEtp = record //Zonen: Homogenität + Verknüpfung (entropie)
     Min:single; //Minimum Varianz
     Sze:integer; //Größe in Pixeln
-    Lnk:integer; //Verknüpfze Fläche
-    aBnd:tnSgl; //Summen + Quadrate
+    Lnk:integer; //Verknüpfte Fläche
+    aBnd:tnSgl; //Summen + Quadrate für alle Kanäle
   end;
   tpEtp = ^trEtp; //Zeiger auf Record
   tapEtp = array of tpEtp; //Zeiger-Liste
@@ -459,6 +334,7 @@ type
     Btm:double;
   end; //vgl: trCvr
   tarFrm = array of trFrm;
+  tpFrm = ^trFrm; //typisierter Zeiger
 
   trGeo = record
     Lat:double; //geogr. Breite
@@ -467,26 +343,22 @@ type
   end;
   tarGeo = array of trGeo; //Linien, Polygone
 
-  trRgb = record
-    Red:single; //Farb-Dichten [0..1]
-    Grn:single;
-    Blu:single;
-  end;
-
   trHdr = record //ENVI-kompatible Header-Information
-    Cnt:integer; //höchste Klassen-ID oder Anzahl Zellen
+    Cnt:integer; //höchste Klassen-ID oder Anzahl Zonen (ohne Null)
     Fmt:integer; //ENVI-Datenformat
     Lat,Lon:double; //Koordinaten links oben: Y=Breite, X=Länge
+    Nod:double; //NoData-Value
     Pix:double; //Pixelgröße in Meter
     Prd:integer; //Kanäle pro Bild im Stack
     Scn,Lin:integer; //Spalten, Zeilen auf Pixelebene
     Stk:integer; //Kanäle in Datei
     Cys:string; //"coordinate system string" aus gdal-Bibliothek
-    Fld:string; //Feldnamen für Attribute (kommagetrennt)
+    Fld:string; //Klassen-Namen ODER Feldnamen für Attribute (kommagetrennt)
     Map:string; //" map info" aus ENVI-Header
     Pif:string; //"projection info" aus ENVI-Header
     Pal:tnCrd; //Palette für alle Klassen
-    aBnd:string; //Kanal- oder Klassen-Namen, getrennt durch Zeilenwechsel!
+    aBnd:string; //Kanal-Namen, getrennt durch Zeilenwechsel!
+    aCvr:string; //Abdeckung mit klaren Pixeln, Bilder getrennt
   end;
 //==> HEADER.COPY ANPASSEN!
 
@@ -503,6 +375,22 @@ type
     Map:integer; //Klassen-ID
   end;
   tprRfz = ^trRfz; //für Listen
+
+  trRgb = record
+    Red:single; //Farb-Dichten [0..1]
+    Grn:single;
+    Blu:single;
+  end;
+
+  trRoi = record
+    Frm:trFrm; //Auswahl-Rahmen
+    Tle:string; //Kachel-ID
+  end;
+
+  trSlc = record //Abschnitte aus Dateinamen lesen
+    Ofs:integer;
+    Sze:integer;
+  end;
 
   trSpc = record //Verteilung von Clustern auf Referenzen
     Map:integer; //Cluster/Klassen-ID
@@ -530,38 +418,33 @@ type
     function BitSize(sNme:string):integer;
     procedure BitWrite(fxVal:tn2Sgl; sNme:string);
     function CheckOpen(sNme:string; iMds:integer):integer;
-    function _CheckTarget(sDir:string):string;
-    function CommaToLine(sDlm:string):string;
-    procedure ConsoleOut(sHnt:string);
+    function _CheckTarget_(sDir:string):string;
+    function CommaToLines(sDlm:string):string;
+    procedure CommaToTab(var sDlm:string);
     procedure _CopyDir_(sSrc,sDst:string);
-    function CopyEnvi(sOld,sNew:string):string;
     procedure _CopyFile_(sDat,sCpy:string);
     procedure CopyFile(sDat,sCpy:string);
     function CopyGrid(ixTmp:tn2Int):tn2Int;
-    function CopyHeader(var rHdr:trHdr):trHdr;
-    procedure CopyIndex(sTrg:string); //Quell- und Ziel-Datei
-    procedure CopyShape(sSrc,sTrg:string);
-    procedure CsvDelete(sNme:string);
-    procedure DoubleToText(fxVal:tn2Dbl; sNme:string);
+    function CopyIndex(sSrc,sTrg:string):boolean;
+    function CopyShape(sSrc,sTrg:string):boolean;
+    procedure _CsvDelete_(sNme:string);
+    function CsvToSingle(fDfl:single; iSze:integer; sLst:string):tnSgl;
+    function _DirectoryFilter_(sMsk:string):TStringList;
+    function EnviCopy(sOld,sNew:string):string;
     procedure EnviDelete(sNme:string);
     procedure EnviRename(sOld,sNew:string);
-    procedure EnviTrash(sNme:string);
+    procedure _EnviTrash_(sNme:string);
     function ErrorLog(sPrc:string):boolean;
     procedure ErrorOut(iLvl:integer; sErr:string);
     function FileFilter(sMsk:string):TStringList;
-    function _FileTree(sDir:string; yRes:TTreeRes):TStringList;
-    function _FirstBand(fxImg:tn3Sgl):tn2Sgl;
-    function GetBool(sPrm:string):boolean;
-    function GetChar(sPrm:string):char;
+    function _FileTree_(sDir:string; yRes:TTreeRes):TStringList;
     function _GetError_:string;
-    function GetFloat(sPrm:string):single;
-    function GetInt(sPrm:string):integer;
     function GetOutput(oProcess:tProcess):string;
     procedure HintOut(bTms:boolean; sHnt:string);
-    function _HsvToRgb(fHue,fSat,fVal:single):trRgb;
+    function _HsvToRgb_(fHue,fSat,fVal:single):trRgb;
+    function _ImportList(sDir:string; slBnd:tStringList):string;
     function InitByte(iCnt:integer):tnByt;
     function Init2Byte(iRow,iCol:integer):tn2Byt;
-    function Init3Byte(iBnd,iRow,iCol:integer):tn3Byt;
     function InitCardinal(iSze:integer):tnCrd;
     function InitDouble(iSze:integer):tnDbl;
     function InitIndex(iSze:integer):tnInt;
@@ -574,39 +457,34 @@ type
     function Init3Single(iStk,iRow,iCol:integer; iVal:dWord):tn3Sgl;
     function InitWord(iSze:integer):tnWrd;
     function Init2Word(iRow,iCol:integer):tn2Wrd;
+    function _LastName(sNme:string):string;
     function LineRead(sNme:string):string;
+    function LinesToCommas(sDlm:string):string;
     function LoadClean(sTxt:string):tStringList;
-    function MaskExtend(sMsk:string):string;
-    function MaxThema(ixBnd:tn2Byt):byte;
     function MinBand(fxBnd:tn2Sgl):single;
-    function _MoveThema(ixThm:tn2Byt):tn2Byt;
     function NewFile(iCnt,iVal:dWord; sNme:string):integer;
     function OsCommand(sCmd,sPrm:string):string;
     procedure OsExecute(sExc:string; SlPrm:TStringList);
-    function _ReadList_(sLst:string):tnStr;
-    function ShortName(iLft,iMid,iRgt:integer; sArc:string):string;
     function SetDirectory(sDir:string):string;
     procedure ShapeDelete(sNme:string);
-    procedure ShapeRename(sSrc,sTrg:string);
+    procedure _ShapeRename_(sSrc,sTrg:string);
+    procedure SingleToText(fxVal:tn2Sgl; sCol,sRow,sTrg:string);
     procedure TextAppend(sNme,sTxt:string);
     procedure TextOut(sNme,sTxt:string);
-    function TextRead(sNme:string):string;
-    function _eTextRead(sNme:string):string;
-    function ValueList(sLst:string):tnSgl;
+    function _TextRead_(sNme:string):string;
   end;
 
 const
-  crBox: trBox = (Lft:MaxInt; Top:0-MaxInt; Rgt:0-MaxInt; Btm:MaxInt);
+  crBox: trBox = (Lft:MaxInt; Top:0-MaxInt; Rgt:0-MaxInt; Btm:MaxInt); //Vorgabe für min/max-Prozesse
   crCvr: trCvr = (Crs:''; Pro:''; Epg:0; Wdt:0; Hgt:0; Stk:1; Lft:MaxInt;
-         Top:0-MaxInt; Rgt:0-MaxInt; Btm:MaxInt; Pix:0); //Koordinaten für min/max-Prozesse
+         Top:0-MaxInt; Rgt:0-MaxInt; Btm:MaxInt; Pix:0); //Vorgabe für min/max-Prozesse
   crEtp: trEtp = (Min:0; Sze:0; Lnk:0; aBnd:nil);
   crFrm: trFrm = (Crs:''; Epg:0; Lft:MaxInt; Top:0-MaxInt; Rgt:0-MaxInt;
-         Btm:MaxInt); //unmöglich, für min/max-Prozesse
+         Btm:MaxInt); //unmöglich, Vorgabe für min/max-Prozesse
   crGeo: trGeo = (Lat:0; Lon:0; Epg:0);
-  crMax: trFrm = (Crs:''; Epg:0; Lft:0-MaxInt; Top:MaxInt; Rgt:MaxInt;
-         Btm:0-MaxInt); //maximaler Rahmen
-  crHdr: trHdr = (Cnt:0; Fmt:0; Lat:1; Lon:1; Pix:1; Prd:0; Scn:0; Lin:0;
-         Stk:0; Cys:''; Fld:''; Map:''; Pif:''; Pal:nil; aBnd:'');
+  crHdr: trHdr = (Cnt:0; Fmt:0; Lat:1; Lon:1; Nod:NaN; Pix:1; Prd:0; Scn:0;
+         Lin:0; Stk:0; Cys:''; Fld:''; Map:''; Pif:''; Pal:nil; aBnd:'';
+         aCvr:'');
   //crGry: trRgb = (Red:0.5; Grn:0.5; Blu:0.5);
   crRgb: trRgb = (Red:0.0; Grn:0.0; Blu:0.0);
 
@@ -617,17 +495,6 @@ var
   StepError: tStepError; //Teilschritt abbrechen
 
 implementation
-
-{ tRL verteilt Worte in einer kommagetrennten Liste auf ein String-Array }
-
-function tTools._ReadList_(sLst:string):tnStr; //Eingabe(Komma-getrent): String-Array
-var
-  I:integer;
-begin
-  SetLength(Result,WordCount(sLst,[','])); //Dimension aus Kommas
-  for I:=0 to high(Result) do
-    Result[I]:=trim(ExtractWord(succ(I),sLst,[','])); //Worte auf Array verteilen
-end;
 
 { rEL liest die Error-Pipe von "prSys" und speichert sie als "imalys-error" im
   Imalys-Verzeichnis des Anwenders. rEL muss unmittelbar nach "prSys.Execute"
@@ -706,6 +573,38 @@ begin
   Result:=FileOpen(sNme,iMds); //Datei öffnen
   if Result<1 then
     Tools.ErrorOut(2,cOpn+sNme);
+end;
+
+{ tNF erzeugt eine neue Datei mit dem Namen "sNme" und gibt das Handle zurück.
+  Mit "iCnt>0" erzeugt tNF eine Datei mit "iCnt*SizeOf(dWord)" Byte und füllt
+  sie mit "iVal". }
+
+function TTools.NewFile(
+  iCnt:dWord; //Pixel in neuer Datei
+  iVal:dWord; //Vorgabe-Wert
+  sNme:string): //Name der neuen Datei
+  integer; //File-Handle ODER (-1) für Fehler
+const
+  cCrt = 'fTNF: Unable to create file: ';
+  cBlk = $10000;
+var
+  iaVal:tnCrd=nil; //dWord-Array
+  iBlk:integer; //Pixel-Block
+begin
+  Result:=-1; //Vorgabe = Fehler
+  DeleteFile(sNme); //Sicherheit
+  Result:=FileCreate(sNme); //neue Datei
+  if Result<0 then
+    Tools.ErrorOut(2,cCrt+sNme);
+
+  if iCnt>0 then SetLength(iaVal,cBlk);
+  while iCnt>0 do
+  begin
+    iBlk:=min(iCnt,cBlk);
+    FillDWord(iaVal[0],iBlk,iVal);
+    FileWrite(Result,iaVal[0],iBlk*SizeOf(dWord));
+    iCnt:=iCnt-iBlk;
+  end;
 end;
 
 { BF öffnet oder erzeugt eine Bit-Tabelle und übergibt eine Liste mit Offsets
@@ -857,35 +756,6 @@ begin
   end;
 end;
 
-function tTools.GetFloat(sPrm:string):single;
-const
-  cFlt='Numeric (float) expression required: ';
-begin
-  if not TryStrToFloat(sPrm,Result) then
-    Tools.ErrorOut(2,cFlt+sPrm);
-end;
-
-function tTools.GetInt(sPrm:string):integer;
-const
-  cInt='Integer expression required: ';
-begin
-  if not TryStrToInt(sPrm,Result)
-    then Tools.ErrorOut(2,cInt+sPrm);
-end;
-
-function tTools.GetBool(sPrm:string):boolean;
-const
-  cBoo = 'Boolean expression required! Instead given: ';
-begin
-  if not TryStrToBool(sPrm,Result) then
-    Tools.ErrorOut(2,cBoo+sPrm);
-end;
-
-function tTools.GetChar(sPrm:string):char;
-begin
-  Result:=sPrm[1]; //ertser Buchstabe
-end;
-
 procedure tTools.EnviRename(sOld,sNew:string);
 const
   cFex = 'tER: Image not found: ';
@@ -938,20 +808,28 @@ begin
   end; //try ..
 end;
 
+{ tFC kapselt den OS-Befehl "cp". tFC kopiert genau eine Datei ohne weitere
+  Parameter. Die Dateinamen dürfen keine Platzhalter verwenden. }
+
+procedure tTools.CopyFile(sDat,sCpy:string);
+begin
+  prSys.Options:=[poWaitOnExit,poUsePipes]; //modal ausführen
+  prSys.Executable:='cp';
+  prSys.Parameters.Clear; //Sicherheit
+  prSys.Parameters.Add(sDat);
+  prSys.Parameters.Add(sCpy);
+  prSys.Execute;
+end;
+
 { tTEC kopiert ENVI Bilddaten mit einem neuen Namen }
 
-function tTools.CopyEnvi(sOld,sNew:string):string;
+function tTools.EnviCopy(sOld,sNew:string):string;
 begin
   Result:=sNew; //Vorgabe
   if sOld=sNew then exit;
   CopyFile(ChangeFileExt(sOld,''),ChangeFileExt(sNew,'')); //Datei
   CopyFile(ChangeFileExt(sOld,cfHdr),ChangeFileExt(sNew,cfHdr)); //Header
   //FileCopy(ChangeFileExt(sOld,cfExt),ChangeFileExt(sNew,cfExt)); //Erweiterung
-end;
-
-procedure tTools.ConsoleOut(sHnt:string);
-begin
-  writeln('Imalys [',TimeToStr(Time),'] '+sHnt);
 end;
 
 function tTools.Init2Integer(iRow,iCol:integer; iVal:dWord):tn2Int; //neue Dimensionen
@@ -1039,7 +917,7 @@ begin
     move(fxSrc[Y,0],Result[Y,0],iSze);
 end;
 
-function tTools._CheckTarget(sDir:string):string;
+function tTools._CheckTarget_(sDir:string):string;
 const
   cTrg = 'tTCT: Target directory not found: ';
 begin
@@ -1052,7 +930,7 @@ begin
 end;
 
 { tTCI kopiert eine Matrix mit 32-Bit Einträgen (Integer, dWord, Single, …)
-  Durch den move-Befehl werden alle Werte unverändert übernommen. }
+  Durch den move-Befehl werden Inhalte, nicht Adressen kopiert. }
 
 function tTools.CopyGrid(ixTmp:tn2Int):tn2Int; //Vorlage: Ergebnis
 var
@@ -1074,76 +952,6 @@ begin
   SetLength(Result,iSze); //Dimension
   for I:=0 to pred(iSze) do
     Result[I]:=I; //initialisieren
-end;
-
-{ tHO schreibt einen Zeitstempel + den Hinweis "sHnt" nach stdOut und in die
-  Protokoll-Datei "cfOut"}
-
-procedure tTools.HintOut(
-  bTms:boolean; //Zeitstempel schreiben
-  sHnt:string); //Meldung, Status
-begin
-  if bTms then sHnt:='imalys ['+TimeToStr(Time)+'] '+sHnt; //Zeitpunkt ergänzen
-  writeln(#13+sHnt); //Meldung auf Konsole
-  TextAppend(eeLog+cfOut,sHnt+#10); //Meldung in Textdatei
-end;
-
-procedure tTools.ShapeDelete(sNme:string);
-{ tTSD löscht alle Dateien für ein ESRI Shape mit Projektion }
-begin
-  DeleteFile(ChangeFileExt(sNme,'.shp'));
-  DeleteFile(ChangeFileExt(sNme,'.shx'));
-  DeleteFile(ChangeFileExt(sNme,'.dbf'));
-  DeleteFile(ChangeFileExt(sNme,'.prj'));
-end;
-
-function tTools._FirstBand(fxImg:tn3Sgl):tn2Sgl;
-var
-  iSze:integer; //Byte pro Zeile
-  Y:integer;
-begin
-  SetLength(Result,length(fxImg[0]),length(fxImg[0,0]));
-  iSze:=length(fxImg[0,0])*SizeOf(single);
-  for Y:=0 to high(fxImg[0]) do
-    move(fxImg[0,Y,0],Result[Y,0],iSze);
-end;
-
-function tTools.Init2Word(iRow,iCol:integer):tn2Wrd;
-{ tTIB erzeugt ein Integer-Array mit zwei Dimensionen und füllt es mit Null. }
-var
-  I: integer;
-begin
-  SetLength(Result,iRow,iCol);
-  for I:=0 to pred(iRow) do
-    FillWord(Result[I,0],iCol,0);
-end;
-
-function tTools.CopyHeader(var rHdr:trHdr):trHdr;
-begin
-  Result:=rHdr;
-  Result.Pal:=copy(rHdr.Pal);
-  Result.aBnd:=copy(rHdr.aBnd,1,length(rHdr.aBnd))
-end;
-
-{ gTO schreibt den Text "sTxt" unverändert in die Datei "sNme" }
-
-procedure tTools.TextOut(
-  sNme: string; //Dateiname
-  sTxt: string); //Inhalt
-const
-  cNme = 'Impossible to create file ';
-var
-  dTxt: TextFile; //Initialisierung
-begin
-  try
-    AssignFile(dTxt,sNme);
-    {$i-} Rewrite(dTxt); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cNme+sNme);
-    write(dTxt,sTxt); //bin-Verzeichnis der gdal-Bibliothek
-  finally
-    Flush(dTxt);
-    CloseFile(dTxt);
-  end; //of try ..
 end;
 
 { gTO schreibt den Text "sTxt" unverändert in die Datei "sNme" }
@@ -1169,25 +977,55 @@ begin
   end; //of try ..
 end;
 
-{ tTR gibt den Inhalt der Datei "sNme" zurück. Der Zeilentrenner "sDlm" ist
-  wählbar. Mit "sDlm=''" kann tTR Zeilentrenner löschen. }
+{ tHO schreibt einen Zeitstempel + den Hinweis "sHnt" nach stdOut und in die
+  Protokoll-Datei "cfOut"}
 
-function tTools.TextRead(
-  sNme:string): //Name des Vorbilds
-  string; //Text als String
+procedure tTools.HintOut(
+  bTms:boolean; //Zeitstempel schreiben
+  sHnt:string); //Meldung, Status
+begin
+  if bTms then sHnt:='imalys ['+TimeToStr(Time)+'] '+sHnt; //Zeitpunkt ergänzen
+  writeln(#13+sHnt); //Meldung auf Konsole
+  TextAppend(eeLog+cfOut,sHnt+#10); //Meldung in Textdatei
+end;
+
+procedure tTools.ShapeDelete(sNme:string);
+{ tTSD löscht alle Dateien für ein ESRI Shape mit Projektion }
+begin
+  DeleteFile(ChangeFileExt(sNme,'.shp'));
+  DeleteFile(ChangeFileExt(sNme,'.shx'));
+  DeleteFile(ChangeFileExt(sNme,'.dbf'));
+  DeleteFile(ChangeFileExt(sNme,'.prj'));
+end;
+
+{ tTIB erzeugt ein Integer-Array mit zwei Dimensionen und füllt es mit Null. }
+
+function tTools.Init2Word(iRow,iCol:integer):tn2Wrd;
+var
+  I: integer;
+begin
+  SetLength(Result,iRow,iCol);
+  for I:=0 to pred(iRow) do
+    FillWord(Result[I,0],iCol,0);
+end;
+
+{ gTO schreibt den Text "sTxt" unverändert in die Datei "sNme" }
+
+procedure tTools.TextOut(
+  sNme: string; //Dateiname
+  sTxt: string); //Inhalt
 const
-  cNme = 'Impossible to open file ';
+  cNme = 'Impossible to create file ';
 var
   dTxt: TextFile; //Initialisierung
-  sTmp: string='';
 begin
-  Result:='';
   try
     AssignFile(dTxt,sNme);
-    {$i-} Reset(dTxt); {$i+}
+    {$i-} Rewrite(dTxt); {$i+}
     if IOResult<>0 then Tools.ErrorOut(2,cNme+sNme);
-    read(dTxt,Result);
+    write(dTxt,sTxt); //als Datei speichern
   finally
+    Flush(dTxt);
     CloseFile(dTxt);
   end; //of try ..
 end;
@@ -1212,19 +1050,6 @@ begin
   end; //of try ..
 end;
 
-{ tFC kapselt den OS-Befehl "cp". tFC kopiert genau eine Datei ohne weitere
-  Parameter. Die Dateinamen dürfen keine Platzhalter verwenden. }
-
-procedure tTools.CopyFile(sDat,sCpy:string);
-begin
-  prSys.Options:=[poWaitOnExit,poUsePipes]; //modal ausführen
-  prSys.Executable:='cp';
-  prSys.Parameters.Clear; //Sicherheit
-  prSys.Parameters.Add(sDat);
-  prSys.Parameters.Add(sCpy);
-  prSys.Execute;
-end;
-
 { tOC führt einen Befehl aus und gibt das Ergebnis als String zurück. Dabei
   akzeptiert tOC nur einen Parameter. tOC wurde für einfache Shell-Befehle
   implementiert. }
@@ -1241,6 +1066,7 @@ function tTools.OsCommand(
 begin
   Result:='';
   prSys.Options:=[poWaitOnExit,poUsePipes];
+  //prSys.Options:=[poUsePipes];
   prSys.Executable:=sCmd;
   prSys.Parameters.Clear;
   if sCmd='cmd' then prSys.Parameters.Add('/c'); //Befehl aus Parameter übernehmen WINDOWS
@@ -1281,7 +1107,7 @@ procedure tTools.BitInsert(
 const
   cFit = 'fTBW: Field exchange requires identical array size: ';
   cPst = 'fTBI: Data field position must be positive or zero!';
-  cVal = 'fTBI: no data field given given to extend table!';
+  cVal = 'fTBI: no data field given to extend table!';
 var
   hBit: integer; //File-Handle Tabelle
   iaOfs: tnLrg=nil; //Einsprung-Adressen
@@ -1299,7 +1125,7 @@ begin
       iPst:=min(iPst,high(iaOfs)); //fortlaufend zählen
       if iPst<high(iaOfs) then //nur wenn Block ersetzt wird
         if length(faVal)*SizeOf(single)<>iaOfs[succ(iPst)]-iaOfs[iPst] then
-          Tools.ErrorOut(2,cFit+sNme);
+          Tools.ErrorOut(3,cFit+sNme);
       if iPst=high(iaOfs) then
       begin //Tabelle erweitern
         SetLength(iaOfs,succ(length(iaOfs))); //neues Feld
@@ -1324,6 +1150,8 @@ begin
   end;
 end;
 
+{ tSD ergänzt den Directory Separator wenn nötig }
+
 function tTools.SetDirectory(sDir:string):string;
 begin
   if sDir[length(sDir)]<>DirectorySeparator
@@ -1331,16 +1159,18 @@ begin
     else Result:=sDir;
 end;
 
-procedure tTools.CsvDelete(sNme:string);
 { tCD löscht alle Dateien einer CSV Geometrie }
+
+procedure tTools._CsvDelete_(sNme:string);
 begin
   DeleteFile(ChangeFileExt(sNme,'.csv'));
   DeleteFile(ChangeFileExt(sNme,'.csvt'));
+  DeleteFile(ChangeFileExt(sNme,'.prj'));
 end;
 
 { tSR verändert den Namen einer Shape-Datei. "sSrc" und "sTrg" müssen passen }
 
-procedure tTools.ShapeRename(sSrc,sTrg:string);
+procedure tTools._ShapeRename_(sSrc,sTrg:string);
 begin
   sTrg:=ExtractFilePath(sSrc)+ExtractFileName(sTrg); //gleiches Verzeichnis
   RenameFile(ChangeFileExt(sSrc,'.shp'),ChangeFileExt(sTrg,'.shp'));
@@ -1351,13 +1181,15 @@ end;
 
 { tSC kopiert alle Teile einer ESRI Shape-Datei }
 
-procedure tTools.CopyShape(sSrc,sTrg:string); //Quell- und Ziel-Datei
+function tTools.CopyShape(sSrc,sTrg:string):boolean; //Quell- und Ziel-Datei
 begin
+  Result:=False; //Vorgabe = Error
   CreateDir(ExtractFileDir(sTrg)); //Sicherheit
   CopyFile(ChangeFileExt(sSrc,'.shp'),ChangeFileExt(sTrg,'.shp'));
   CopyFile(ChangeFileExt(sSrc,'.shx'),ChangeFileExt(sTrg,'.shx'));
   CopyFile(ChangeFileExt(sSrc,'.dbf'),ChangeFileExt(sTrg,'.dbf'));
   CopyFile(ChangeFileExt(sSrc,'.prj'),ChangeFileExt(sTrg,'.prj'));
+  Result:=FileExists(ChangeFileExt(sTrg,'.shp'));
 end;
 
 { BS gibt die Anzahl der Datenblöcke in der BIT-Datei "sNme" zurück }
@@ -1381,20 +1213,6 @@ function tTools.InitByte(iCnt:integer):tnByt;
 begin
   SetLength(Result,iCnt);
   FillByte(Result[0],iCnt,0);
-end;
-
-function tTools.MaxThema(ixBnd:tn2Byt):byte;
-{ tMT gibt die höchste Klassen-ID im Kanal "ixBnd" zurück }
-const
-  cNil = 'fMT: Image data not defined!';
-var
-  X,Y: integer;
-begin
-  if ixBnd=nil then Tools.ErrorOut(2,cNil);
-  Result:=0; //keine Klasse
-  for Y:=0 to high(ixBnd) do //alle Pixel und Kanäle
-    for X:=0 to high(ixBnd[0])do
-      Result:=max(ixBnd[Y,X],Result)
 end;
 
 function tTools.MinBand(fxBnd:tn2Sgl):single;
@@ -1427,60 +1245,20 @@ begin
     else Result:=0;
 end;
 
-function tTools.Init3Byte(iBnd,iRow,iCol:integer):tn3Byt;
-{ tTIB erzeugt ein Integer-Array mit drei Dimensionen und füllt es mit Null. }
-var
-  B,I: integer;
-begin
-  SetLength(Result,iBnd,iRow,iCol);
-  for B:=0 to pred(iBnd) do
-    for I:=0 to pred(iRow) do
-      FillByte(Result[B,I,0],iCol,0);
-end;
-
-function TTools.NewFile(
-  iCnt:dWord; //Pixel in neuer Datei
-  iVal:dWord; //Vorgabe-Wert
-  sNme:string): //Name der neuen Datei
-  integer; //File-Handle ODER (-1) für Fehler
-{ tNF erzeugt eine neue Datei mit dem Namen "sNme" und gibt das Handle zurück.
-  Mit "iCnt>0" erzeugt tNF eine Datei mit "iCnt*SizeOf(dWord)" Byte und füllt
-  sie mit "iVal". }
-const
-  cCrt = 'fTNF: Unable to create file: ';
-  cBlk = $10000;
-var
-  iaVal:tnCrd=nil; //dWord-Array
-  iBlk:integer; //Pixel-Block
-begin
-  Result:=-1; //Vorgabe = Fehler
-  DeleteFile(sNme); //Sicherheit
-  Result:=FileCreate(sNme); //neue Datei
-  if Result<0 then
-    Tools.ErrorOut(2,cCrt+sNme);
-
-  if iCnt>0 then SetLength(iaVal,cBlk);
-  while iCnt>0 do
-  begin
-    iBlk:=min(iCnt,cBlk);
-    FillDWord(iaVal[0],iBlk,iVal);
-    FileWrite(Result,iaVal[0],iBlk*SizeOf(dWord));
-    iCnt:=iCnt-iBlk;
-  end;
-end;
-
 { tCL ersetzt Kommas durch Zeilenwechsel. Leerzeichen werden gelöscht }
 
-function tTools.CommaToLine(sDlm:string):string;
+function tTools.CommaToLines(sDlm:string):string;
 var
   I:integer;
 begin
   Result:=DelSpace(sDlm); //alle Leerzeichen entfernen
   for I:=1 to length(Result) do
     if Result[I]=',' then Result[I]:=#10;
+  if Result[length(Result)]=#10 then
+    delete(Result,length(Result),1);
 end;
 
-procedure tTools.EnviTrash(sNme:string);
+procedure tTools._EnviTrash_(sNme:string);
 { tET verschiebt eine ENVI-Bild mit qGis-Zusätzen in den Trash }
 begin
   OsCommand('gvfs-trash',ChangeFileExt(sNme,''));
@@ -1493,17 +1271,6 @@ function tTools.InitWord(iSze:integer):tnWrd;
 begin
   SetLength(Result,iSze);
   FillWord(Result[0],iSze,0);
-end;
-
-function tTools.MaskExtend(sMsk:string):string;
-var
-  sNme:string;
-begin
-  sNme:=ChangeFileExt(ExtractFileName(sMsk),''); //Name ohne Extension
-  if length(sNme)>0 then
-    Result:=ExtractFilePath(sMsk)+'*'+sNme+'*'+ExtractFileExt(sMsk) //Name doppelt erweitern
-  else
-    Result:=ExtractFilePath(sMsk)+'*'+ExtractFileExt(sMsk); //nur Extension verwenden
 end;
 
 { tEL schreibt die aktuelle System-Fehlermldung in die Datei "error.log". tEL
@@ -1550,8 +1317,9 @@ end;
 { tEO schreibt eine Imalys-Fehlermeldungen "sErr" auf die Console und an das
   Ende der Output-Datei. Danach löst tEO einen Fehler aus. Dabei beendet
   "Level=1" das Programm vollständig (Parse.xLoop), "Level=2" beendet die
-  aktuelle Prozess-Kette (Parse.xChain). Alle anderen Werte erzeugen einen
-  lokalen Fehler.
+  aktuelle Prozess-Kette (Parse.xChain), "Level=3" beendet den aktuellen Befehl
+  (Prozess) und "Level=0" schreibt nur die Nachricht. Alle anderen "Levels"
+  lösen einen Standard-fehler aus.
   ==> ErrorLog schreibt Fehler-Meldungen externer Programme in eine eigene
       Log-Datei. }
 
@@ -1559,11 +1327,8 @@ procedure tTools.ErrorOut(
   iLvl:integer; // 1=Programm beenden, 2=Prozess-Kette beenden
   sErr:string); //Nachricht
 begin
-  if iLvl>0 then
-  begin
-    writeln('ImalysError '+sErr); //Fehler auf Konsole schreiben
-    TextAppend(eeLog+cfOut,'ImalysError '+sErr+#10); //Fehler als Text
-  end;
+  writeln('ImalysError '+sErr); //Fehler auf Konsole schreiben
+  TextAppend(eeLog+cfOut,'ImalysError '+sErr+#10); //Fehler als Text
   case iLvl of
     0:; //nur Nachricht ausgeben
     1:raise tLoopError.Create(sErr); //Anwendung anhalten
@@ -1573,39 +1338,6 @@ begin
   end;
 end;
 
-{ tLC liest die Datei "sPrc" als Text, entfernt leere Zeilen und Kommentare und
-  gibt das Ergebnis als String-Liste zurück. }
-
-function tTools.LoadClean(sTxt:string):tStringList;
-const
-  cDef = 'tLC: File not found: ';
-  cLin = 'tLC: Empty file found: ';
-var
-  I:integer;
-  qR:string;
-  qT:integer;
-begin
-  Result:=nil;
-  if FileExists(sTxt) then
-  begin
-    Result:=tStringList.Create;
-    Result.LoadFromFile(sTxt);
-    if Result.Count<1 then Tools.ErrorOut(2,cLin+sTxt);
-    for I:=pred(Result.Count) downto 0 do
-    begin
-      qR:=Result[I];
-      qT:=pos('#',Result[I]);
-      if trim(Result[I])='' then Result.Delete(I) else
-      if pos('#',Result[I])>0 then
-      begin
-        Result[I]:=copy(Result[I],1,pred(pos('#',Result[I])));
-        if trim(Result[I])='' then Result.Delete(I)
-      end;
-    end;
-  end
-  else Tools.ErrorOut(2,cDef+sTxt);
-end;
-
 { tFT durchsucht den Verzeichnisbaum ab "sDir" mit allen Verzweigungen. Dazu
   verwendet tFT zwei Schleifen. In der inneren Schleife registriert FT in
   "rDat" alle Dateien im aktuellen Verzeichnis und übergibt sie an "yRes". Wenn
@@ -1613,7 +1345,7 @@ end;
   "." und ".." Dateien. In der äußeren Schleife ruft jeder Eintrag in "SlDir"
   eine innere Schleife auf. }
 
-function tTools._FileTree(
+function tTools._FileTree_(
   sDir: string; //Quell-Verzeichnis (Wurzel)
   yRes: TTreeRes): //Datei-Verarbeitung
   TStringList; //Nachrichten von "yRes"
@@ -1649,59 +1381,12 @@ begin
   end; //finally ..
 end;
 
-{ tMT kopiert einen thematischen Layer und gibt ihn als Matrix zurück }
-
-function tTools._MoveThema(ixThm:tn2Byt):tn2Byt;
-var
-  Y:integer;
-begin
-  SetLength(Result,length(ixThm),length(ixThm[0]));
-  for Y:=0 to high(ixThm) do
-    move(ixThm[Y,0],Result[Y,0],length(ixThm[0]));
-end;
-
 { tTIL erzeigt ein Large-Array und füllt es mit Nullen}
 
 function tTools.InitDouble(iSze:integer):tnDbl;
 begin
   SetLength(Result,iSze);
   FillDWord(Result[0],iSze*2,0);
-end;
-
-{ tTT speichert eine Float-Tabelle als Tab-gerennten Text. Die Zahl der Stellen
-  nach dem Komma ist wählbar }
-
-procedure tTools.DoubleToText(
-  fxVal:tn2Dbl; //Tabelle als Float
-  sNme:string); //Dateiname
-const
-  cNme = 'Impossible to create file ';
-var
-  dTxt:TextFile; //Initialisierung
-  sLin:string=''; //aktuelle Zeile
-  C,R:integer;
-begin
-  try
-    AssignFile(dTxt,sNme);
-    {$i-} Rewrite(dTxt); {$i+}
-    if IOResult<>0 then Tools.ErrorOut(2,cNme+sNme);
-
-    sLin:='0';
-    for C:=1 to high(fxVal[0]) do
-      sLin+=#9+IntToStr(C);
-    writeln(dTxt,sLin);
-
-    for R:=1 to high(fxVal) do
-    begin
-      sLin:=IntToStr(R);
-      for C:=1 to high(fxVal[R]) do
-        sLin+=#9+FloatToStrF(fxVal[R,C],ffFixed,7,3);
-      writeln(dTxt,sLin);
-    end;
-  finally
-    Flush(dTxt);
-    CloseFile(dTxt);
-  end; //of try ..
 end;
 
 { tID erzeigt ein zweidimensionales Large-Array und füllt es mit Nullen}
@@ -1715,35 +1400,10 @@ begin
     FillDWord(Result[I,0],iRow*2,0);
 end;
 
-{ tRL verteilt Zahlen in einer kommagetrennten Liste auf ein Float-Array }
-
-function tTools.ValueList(sLst:string):tnSgl; //Eingabe(Komma-getrent): Single-Array
-var
-  I:integer;
-begin
-  Result:=Tools.InitSingle(WordCount(sLst,[',']),dWord(NaN)); //Dimension aus Kommas
-  for I:=0 to high(Result) do
-    TryStrToFloat(ExtractWord(succ(I),sLst,[',']),Result[I]);
-end;
-
-{ tSN kürzt den Archiv-Namen von Bilddaten auf ein Krzel aus Sensor, Kachel und
-  Datum. Die Angaben im Archiv-Namen als Worte vorkommen und durch Undersores
-  getrennt sein. Der Ort im Archiv-Name wird durch die Eingabe "iLft,iMid,iRgt"
-  übergeben }
-
-function tTools.ShortName(iLft,iMid,iRgt:integer; sArc:string):string;
-begin
-  sArc:=ChangeFileExt(ExtractFileName(sArc),''); //nur Dateiname
-  Result:=eeHme+
-    ExtractWord(iLft,sArc,['_'])+'_'+
-    ExtractWord(iMid,sArc,['_'])+'_'+
-    ExtractWord(iRgt,sArc,['_']);
-end;
-
 { tTR gibt den Inhalt der Datei "sNme" zurück. Der Zeilentrenner "sDlm" ist
   wählbar. Mit "sDlm=''" kann tTR Zeilentrenner löschen. }
 
-function tTools._eTextRead(
+function tTools._TextRead_(
   sNme:string): //Name des Vorbilds
   string; //Text als String
 const
@@ -1770,7 +1430,7 @@ end;
   und in Anteilen [0..1] für Saturation und Value angegeben werden. Der RGB-
   Wert ist als Anteil der Farbdichten [0..1] formatiert. }
 
-function tTools._HsvToRgb(fHue,fSat,fVal:single):trRgb;
+function tTools._HsvToRgb_(fHue,fSat,fVal:single):trRgb;
 const
   cErr = 'tHR: Undefined input for ';
 begin
@@ -1793,15 +1453,214 @@ begin
   Result.Blu:=(1-fSat+Result.Blu*fSat)*fVal;
 end;
 
-{ tSC kopiert den Zonen-Index als Raster-Bild mit Attributen }
+{ tLC liest die Datei "sPrc" als Text, entfernt leere Zeilen und Kommentare und
+  gibt das Ergebnis als String-Liste zurück. }
 
-procedure tTools.CopyIndex(sTrg:string); //Quell- und Ziel-Datei
+function tTools.LoadClean(sTxt:string):tStringList;
+const
+  cDef = 'tLC: File not found: ';
+  cLin = 'tLC: Empty file found: ';
+var
+  iTld:integer; //Position der Tilede in einem String
+  sIam:string=''; //aktuelles Home-Verzeichnis
+  I:integer;
 begin
-  CreateDir(ExtractFileDir(sTrg)); //Sicherheit
-  CopyFile(ChangeFileExt(eeHme+cfIdx,''),ChangeFileExt(sTrg,''));
-  CopyFile(ChangeFileExt(eeHme+cfIdx,'.hdr'),ChangeFileExt(sTrg,'.hdr'));
-  CopyFile(ChangeFileExt(eeHme+cfIdx,'.bit'),ChangeFileExt(sTrg,'.bit'));
-  CopyFile(eeHme+cfTpl,ChangeFileExt(sTrg,'')+cfTpl);
+  Result:=nil;
+  sIam:='/home/'+OsCommand('whoami','');
+  if FileExists(sTxt) then
+  begin
+    Result:=tStringList.Create;
+    Result.LoadFromFile(sTxt);
+    if Result.Count<1 then Tools.ErrorOut(2,cLin+sTxt);
+    for I:=pred(Result.Count) downto 0 do
+    begin
+      Result[I]:=trim(Result[I]); //Sicherheit
+      if pos('#',Result[I])>0 then //Kommentar
+        Result[I]:=copy(Result[I],1,pred(pos('#',Result[I]))); //Kommentar löschen
+      if trim(Result[I])='' then //Leerzeile
+      begin //Zeile löschen
+        Result.Delete(I);
+        continue
+      end;
+      iTld:=pos('~',Result[I]); //Kürzel für Home-Verzeichnis
+      if (iTld>0) and (pos('=',Result[I])<iTld) then //Tilde in Parameter-Zeile
+        Result[I]:=copy(Result[I],1,pred(iTld))+sIam+ //home-Verzeichnis einsetzen
+          copy(Result[I],succ(iTld),$FFF);
+          //'/home/'+OsCommand('whoami','')+copy(Result[I],succ(iTld),$FFF);
+    end
+  end
+  else Tools.ErrorOut(2,cDef+sTxt);
+end;
+
+{ tCL ersetzt Kommas durch Zeilenwechsel. tCL entfernt alle Leerzeichen }
+
+function tTools.LinesToCommas(sDlm:string):string;
+var
+  I:integer;
+begin
+  Result:=DelSpace(sDlm); //alle Leerzeichen entfernen
+  for I:=1 to length(Result) do
+    if Result[I]=#10 then Result[I]:=',';
+  if Result[length(Result)]=',' then
+    delete(Result,length(Result),1)
+end;
+
+function tTools.CsvToSingle(
+  fDfl:single; //Vorgabe für Fehler
+  iSze:integer; //Array-Dimension
+  sLst:string): //CSV String
+  tnSgl; //Float-Array
+const
+  cCsv= 'pSA: Cannot convert to float: ';
+var
+  fRes:single; //als Zahl
+  iCnt:integer=0; //Anzahl Werte im CSV-String
+  iPst:integer; //Position im CSV-String
+  I:integer;
+begin
+  Result:=Tools.InitSingle(iSze,dWord(fDfl)); //Vorgabe
+  iCnt:=WordCount(sLst,[',']); //Anzahl übergebene Werte
+  for I:=0 to pred(iSze) do
+  begin
+    if I<iCnt
+      then iPst:=succ(I) //aktuellen Wert verwenden
+      else iPst:=1; //ersten Wert verwenden
+    if TryStrToFloat(ExtractWord(iPst,sLst,[',']),fRes) then
+      Result[I]:=fRes
+    else Tools.ErrorOut(2,cCsv+sLst);
+  end;
+end;
+
+{ tCL ersetzt Kommas durch Zeilenwechsel. Leerzeichen werden gelöscht }
+
+procedure tTools.CommaToTab(var sDlm:string);
+var
+  I:integer;
+begin
+  for I:=1 to length(sDlm) do
+    if sDlm[I]=',' then sDlm[I]:=#9;
+end;
+
+{ tST speichert eine Float-Tabelle als Tab-gerennten Text. Mit "sCol" und
+  "sRow" können beliebige Texte als Spalten- und Zeilenbeschriftung übergeben
+  werden. tST ersetzt leere Eingaben durch eine fortlaufende Nummerierung. Die
+  Eingaben müssen im CSV-Format übergeben werden. }
+
+procedure tTools.SingleToText(
+  fxVal:tn2Sgl; //Tabelle als Float
+  sCol:string; //Spalten-Beschriftung, CSV
+  sRow:string; //Zeilen-Beschriftung, CSV
+  sTrg:string); //Dateiname
+const
+  cNme = 'Impossible to create file ';
+var
+  dTxt:TextFile; //Initialisierung
+  sLin:string=''; //aktuelle Zeile
+  C,R:integer;
+begin
+  try
+    AssignFile(dTxt,sTrg);
+    {$i-} Rewrite(dTxt); {$i+}
+    if IOResult<>0 then Tools.ErrorOut(2,cNme+sTrg);
+
+    if sCol='' then
+      for C:=0 to high(fxVal) do
+        sCol+=#9+IntToStr(succ(C)) //Spalten zählen
+      else CommaToTab(sCol);
+    writeln(dTxt,sCol); //Kopfzeile
+
+    if sRow='' then
+      for R:=0 to high(fxVal[0]) do
+        sRow+=#9+IntToStr(succ(R)) //Zeilentitel CSV
+      else CommaToTab(sRow);
+
+    for R:=0 to high(fxVal[0]) do
+    begin
+      sLin:=ExtractWord(succ(R),sRow,[#9]);
+      for C:=0 to high(fxVal) do
+        //sLin+=#9+FloatToStrF(fxVal[C,R],ffFixed,7,6);
+        sLin+=#9+FloatToStr(fxVal[C,R]);
+      writeln(dTxt,sLin);
+    end;
+  finally
+    Flush(dTxt);
+    CloseFile(dTxt);
+  end; //of try ..
+end;
+
+{ tSC kopiert den Zonen-Index, die Zonen-Attribute und die Zonen-Topologie.
+  Quelle und Ziel ist immer ein Verzeichnis, die Namen bleiben unverändert }
+
+function tTools.CopyIndex(sSrc,sTrg:string):boolean; //Quell- und Ziel-Verzeichnis
+begin
+  Result:=False; //Vorgabe = fehler
+  sSrc:=SetDirectory(ChangeFileExt(sSrc,'')); //mit Seperator
+  sTrg:=SetDirectory(ChangeFileExt(sTrg,'')); //mit Seperator
+  CreateDir(sTrg); //Sicherheit
+  CopyFile(sSrc+cfIdx,sTrg+cfIdx); //Zonen-Index
+  CopyFile(sSrc+cfIdx+cfHdr,sTrg+cfIdx+cfHdr);
+  CopyFile(sSrc+cfAtr,sTrg+cfAtr); //Atribute
+  CopyFile(sSrc+cfTpl,sTrg+cfTpl); //Topologie
+  Result:=FileExists(sTrg+cfIdx);
+  HintOut(true,'CopyIndex: '+ExtractFileName(sTrg))
+end;
+
+{ tDF übergibt eine Liste mit allen Vrzeichnissen die zur Maske "sMsk" passen.
+  tDF sucht NICHT rekursiv.
+  ==> DIE REIHENFOLGE IST NICHT SORTIERT }
+
+function tTools._DirectoryFilter_(
+  sMsk:string): //Maske für Namen mit Platzhaltern
+  TStringList; //Bildnamen mit Verzeichnis ODER nil
+const
+  cOpn = 'tDF: Unable to open file or folder: ';
+var
+  rDir:TSearchRec; //Datei-Attribute
+begin
+  Result:=nil;
+  if not DirectoryExists(ExtractFilePath(sMsk)) then
+    Tools.ErrorOut(2,cOpn+sMsk);
+  try
+    Result:=TStringList.Create;
+    if FindFirst(sMsk,faDirectory,rDir)<>0 then exit; //Parameter übergeben + suchen
+    repeat
+      Result.Add(ExtractFilePath(sMsk)+rDir.Name+DirectorySeparator) //vollständiger Name
+    until FindNext(rDir)<>0;
+  finally
+    FindClose(rDir);
+  end; //try ..
+end;
+
+// Liste in neues Verzeichnis kopieren
+
+function tTools._ImportList(
+  sDir:string; //Quell-Verzeichnis
+  slBnd:tStringList):
+  string; //Ziel-Verzeichnis in ".imalys"
+var
+  sExt:string; //Extension
+  B:integer;
+begin
+  Result:=eeHme+Tools._LastName(sDir)+DirectorySeparator; //neues Verzeichnis ..
+  CreateDir(Result); //..erzeugen
+  sExt:=ExtractFileExt(slBnd[0]);
+  for B:=0 to pred(slBnd.Count) do
+    CopyFile(slBnd[B],Result+Tools._LastName(slBnd[B])+sExt);
+end;
+
+{ aLN extrahiert den letzten Namen aus einem Pfad. Der Name kann eine Datei
+  oder ein Verzeichnis sein }
+
+function tTools._LastName(sNme:string):string;
+const
+  sDs = DirectorySeparator;
+var
+  iP:integer;
+begin
+  iP:=rPos('.',sNme); if iP>0 then delete(sNme,iP,$F);
+  iP:=length(sNme); if sNme[iP]=sDs then delete(sNme,iP,1);
+  iP:=rPos(sDs,sNme); if iP>0 then delete(sNme,1,iP);
+  Result:=sNme;
 end;
 
 initialization
@@ -1818,22 +1677,25 @@ end.
 
 //==============================================================================
 
-{ tTIL erzeigt ein Large-Array und füllt es mit Nullen}
+{ tTR verändert den Namen einer Klassifikation als Bild und als Zonen-Attribut }
 
-function tTools._InitPointer(iSze:integer):tnPtr;
+procedure tTools._ThemaProtect_();
+const
+  cFex = 'tTR: Image not found: ';
+  cNew = 'tTR: System operation failed: rename to ';
 begin
-  SetLength(Result,iSze);
-  FillDWord(Result[0],iSze*2,0); //entspricht NIL ?!
-end;
+  if not FileExists(eeHme+cfMap) then Tools.ErrorOut(2,cFex+eeHme+cfMap);
 
-{ tLP gibt den Abschnitt "iPrt" aus "sImg" zurück. Die Abscnitte sind durch "_"
-  getrennt. "sImg" wird als Dateiname interpretiert. }
+  DeleteFile(eeHme+cfCst); //Vorgänger löschen wenn vorhanden
+  DeleteFile(eeHme+cfCst+cfHdr);
+  DeleteFile(eeHme+cfCst+cfBit);
+  DeleteFile(eeHme+c_fTmp);
 
-function tTools._LinePart_(
-  iPrt:integer; //laufende Nummer des Abschnitts
-  sImg:string):string; //Dateiname mit Abschnitten, durch "_" getrennt
-begin
-  Result:=ChangeFileExt(ExtractFileName(sImg),'');
-  Result:=ExtractWord(iPrt,Result,['_']);
+  RenameFile(eeHme+cfMap,eeHme+cfCst); //Bild umbenennen
+  RenameFile(eeHme+cfMap+cfHdr,eeHme+cfCst+cfHdr); //Header umbenennen
+  RenameFile(eeHme+cfMap+cfBit,eeHme+cfCst+cfBit); //Attribut umbenennen
+  RenameFile(eeHme+cfMdl,eeHme+c_fTmp); //Modell umbenennen
+
+  if not FileExists(eeHme+cfCst) then Tools.ErrorOut(2,cNew+eeHme+cfCst);
 end;
 

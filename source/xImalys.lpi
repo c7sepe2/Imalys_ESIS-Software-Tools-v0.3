@@ -25,14 +25,14 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="/home/c7sepe2/GREEN/Hooks/recent"/>
+        <CommandLineParams Value="/home/c7sepe2/AGRI-R/API/¹import_L89"/>
         <LaunchingApplication PathPlusParams="/usr/bin/gnome-terminal -t &apos;Lazarus Run Output&apos; -e &apos;$(LazarusDir)/tools/runwait.sh $(TargetCmdLine)&apos;"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="/home/c7sepe2/GREEN/Hooks/recent"/>
+            <CommandLineParams Value="/home/c7sepe2/AGRI-R/API/¹import_L89"/>
             <LaunchingApplication PathPlusParams="/usr/bin/gnome-terminal -t &apos;Lazarus Run Output&apos; -e &apos;$(LazarusDir)/tools/runwait.sh $(TargetCmdLine)&apos;"/>
           </local>
         </Mode0>

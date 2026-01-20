@@ -39,32 +39,33 @@ type
   tParse = class(tObject)
     private
       function Bonds(sVal:string):integer;
-      function _Breaks(iLin:integer; slPrc:tStringList):integer;
-      function Catalog(iLin:integer; slPrc:tStringList):integer;
-      function Compare(iLin:integer; slPrc:tStringList):integer;
+      function CheckExtern(slImg:tStringList):boolean;
+      function CheckInput(slImg:tStringList):boolean;
+      function _Compare(iLin:integer; slPrc:tStringList):integer;
       function Compile(iLin:integer; slPrc:tStringList):integer;
-      function DataType(sKey:string):integer;
+      procedure _ExportMapping(sTrg:string);
+      procedure ExportZones(sSrc,sTrg:string);
       function Features(iLin:integer; slPrc:tStringList):integer;
       function Flatten(iLin:integer; slPrc:tStringList):integer;
       function Focus(iLin:integer; slPrc:tStringList):integer;
       function GetParam(sLin:string; var sKey,sVal:string):boolean;
       function Home(iLin:integer; slPrc:tStringList):integer;
       function Import(iLin:integer; slPrc:tStringList):integer;
+      procedure _ImportMapping(sSrc:string);
       function Kernel(iLin:integer; slPrc:tStringList):integer;
       function Mapping(iLin:integer; slPrc:tStringList):integer;
-      procedure MaskPeriod(slImg:tStringList; sPrd:string);
-      procedure NoQuality(slArc:tStringList);
       function Protect(iLin:integer; slPrc:tStringList):integer;
-      function Replace(iLin:integer; slPrc:tStringList):integer;
+      function Replace(iLin:integer; slPrc:tStringList; saVar:tnStr):integer;
       function Retain(sVal:string):integer;
-      function RunOff(iLin:integer; slPrc:tStringList):integer;
       function Search(sFlt:string):tStringList;
+      function _SensorType(sMsk:string):integer;
       function SplitCommands(slCmd:tStringList):tStringList;
+      function Variables(var iMax:integer; slPrc:tStringList):tn2Str;
       function wDir(sNme:string):string;
       function Zones(iLin:integer; slPrc:tStringList):integer;
     public
-      procedure xChain(slPrc:tStringList);
-      procedure xLoop(sClr,sPrc:string);
+      procedure xChain(slPrc:tStringList; saVar:tnStr);
+      procedure xLoop(sPrc:string); //Parameter, Prozesskette
   end;
 
 var
@@ -103,131 +104,10 @@ end;
 
 function tParse.wDir(sNme:string):string;
 begin
-  if ExtractFileDir(sNme)=''
-    then Result:=eeHme+sNme
-    else Result:=sNme;
-end;
-
-{ pCp vergleicht eine Clusterung (mapping) mit einer Referenz auf Pixelebene. }
-{ Die Referenzen müssen mit der Clusterung deckungsgleich sein. Wird eine
-  Vektor-Datei übergeben, transformiert pCp sie in eine passende Raster-Datei.
-  Das Ergebnis sind Tabellen im Text-Format und ein Klassen-Bild mit IDs aus
-  der Referenz. }
-
-function tParse.Compare(iLin:integer; slPrc:tStringList):integer;
-const
-  cKey = 'pPt: Keyword not defined: ';
-var
-  bAcy:boolean=False; //Accuracy-Kontrolle (Bild + Tabellen)
-  bAsg:boolean=False; //aktuelle Clusterung referenzieren
-  bRst:boolean=False; //Referenz als Raster exportieren
-  iEpg:integer=0; //EPSG-Code
-  sFld:string=''; //Feldname mit Klassen-Namen aus Vektor-Referenz
-  sImg:string=''; //Vorbild
-  sRfz:string=''; //Referenz (Vektor oder Raster)
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I;
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='reference' then sRfz:=sVal else //Referenz (raster oder vektor)
-    if sKey='fieldname' then sFld:=sVal else //Feld in Referenz (nur vektor)
-    if sKey='raster' then bRst:=sVal='true' else //Raster-Referenz exportieren
-    if sKey='assign' then bAsg:=sVal='true' else //Klassen aus Referenz übernehmen
-    if sKey='control' then bAcy:=sVal='true' else //Zusätzliche Tabellen
-    if sKey='select' then sImg:=sVal else //Vorbld
-    Tools.ErrorOut(2,cKey+sKey); //unzulässiger Parameter
-  end;
-
-  iEpg:=Cover.CrsInfo(eeHme+cfMap); //EPSG-Code
-  if ExtractFileExt(sRfz)<>'' then //keine ENVI-Datei
-  begin
-    Rank.FieldToMap(iEpg,sFld,eeHme+cfMap,sRfz); //Referenz im Raster-Format
-    if bRst then Tools.CopyEnvi(eeHme+cfRfz,ChangeFileExt(sRfz,'_raster')); // Raster-Version exportieren
-  end
-  else Tools.CopyEnvi(sRfz,eeHme+cfRfz); //Raster-Referenz importieren
-  if bAsg //Klassen/Cluster vergleichen
-    then Rank.xThemaFit(bAcy,eeHme+cfMap,eeHme+cfRfz)
-    else Rank.xScalarFit(bAcy,sImg,eeHme+cfRfz); //Scalare vergleichen
-end;
-
-{ pTg exportiert Bild- und Vektor-Daten aus dem Arbeitsverzeichnis an einen
-  gewählten Ort. Die Extension steuert das Datenformat im Ziel. }
-{ pTg exportiert Zonen als Shapes mit Attributen. Dazu bildet pTg eine CSV-
-  Datei mit der Geometrie des Kontroll-Shapes "index.shp" im WKT-Format,
-  ergänzt alle Attribute aus der Tabelle "index.bit" und speichert Geometrie
-  und Attribute im Shape-Format. Ist nur das Kontroll-Shape (ohne Attribute)
-  vorhanden, kopiert pTg es unverändert in das Ziel-Verzeichnis. }
-{ pTg exportiert eine Klassifikation zusammen mit der Klassen-Definition. Das
-  Bild ist immer im Byte-Format, die Definition im internen BIT-Format. }
-{ pTg exportiert Bilddaten in das angegebene Verzeichnis. pTg exportiert
-  Bilder ohne Extension im ENVI-Format. In diesem fall bleiben die erweiterten
-  Header-Informationen erhalten. }
-
-function tParse.Protect(iLin:integer; slPrc:tStringList):integer;
-const
-  cBnd = 0; //alle Kanäle exportieren
-  cFmt = 1; //unverändert exportieren
-  cCpy = 'pTg: Image export not successful: ';
-  cKey = 'pTg: Keyword not defined: ';
-  cPrc = 'pTg: Parameter combination not defined';
-  cSrc = 'pTg: Source image not found: ';
-var
-  iEpg:integer=0; //EPSG-Code
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  sSrc:string=''; //Quelle
-  sTrg:string=''; //Target-Name
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I; //aktuelle Zeile
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='select' then sSrc:=wDir(sVal) else
-    if sKey='target' then sTrg:=wDir(sVal) else
-    Tools.ErrorOut(2,cKey+sKey); //unzulässiger Parameter
-  end;
-  if not FileExists(sSrc) then Tools.ErrorOut(2,cSrc+sSrc);
-  if length(sTrg)<1 then exit; //kein Befehl
-  if DirectoryExists(ExtractFileDir(sTrg))=False then
-    CreateDir(ExtractFileDir(sTrg)); //Sicherheit
-
-  if ExtractFileName(sSrc)=cfIdx then //Zonen als Polygone
-  begin
-    if FileExists(eeHme+cfAtr) then //Attribute existieren
-    begin
-      iEpg:=Cover.CrsInfo(sSrc); //EPSG-Code
-      Gdal.ImportVect(iEpg,eeHme+cfIdx+'.shp'); //CSV-Geometrie aus Kontroll-Shape
-      Points.xPolyAttrib; //Attribute aus Index.bit in CSV-Geometrie eintragen
-      Gdal.ExportShape(iEpg,0,eeHme+cfFcs,sTrg); //als Shape exportieren
-    end
-    else
-    begin
-      Tools.CopyShape(sSrc,sTrg); //unverändert kopieren
-      Tools.HintOut(true,'Tools.Export: '+ExtractFileName(sTrg))
-    end;
-{   TODO: Zellindex, Attribute und Topologie in separates Verzeichnis kopieren.
-          Das Verzeichnis kann dann für eine Klassifikation verwendet werden. }
-  end
-  else if ExtractFileName(sSrc)=cfMap then //Klassen: Bild + Definition
-  begin
-    Gdal.ExportTo(1,2,sSrc,sTrg) //ein Kanal, Byte
-  end
-  else if ExtractFileName(sSrc)=cfTab then //Tabelle im Text-Format
-    Tools.CopyFile(eeHme+cfTab,sTrg) //kopieren
-  else if ExtractFileExt(sTrg)<>'' then //neues Bildformat, anderes Verzeichnis
-  begin
-    Gdal.ExportTo(cBnd,cFmt,sSrc,sTrg); //Bild im gewählten Format
-    if not FileExists(sTrg) then Tools.ErrorOut(2,cCpy+sTrg); //Kontrolle
-  end
-  else if ExtractFileExt(sTrg)='' then //ENVI-Format, externes Verzeichnis
-  begin
-    Tools.CopyEnvi(sSrc,sTrg); //im ENVI-Format kopieren
-    Tools.HintOut(true,'Tools.Export: '+ExtractFileName(sTrg))
-  end
-  else Tools.ErrorOut(2,cPrc);
+  if length(sNme)>0 then
+    if ExtractFileDir(sNme)=''
+      then Result:=eeHme+sNme
+      else Result:=sNme;
 end;
 
 { pSC trennt die Prozesse aus "slCmd" in Prozesse zur Zonen-Geometrie für
@@ -240,9 +120,11 @@ var
 begin
   Result:=tStringList.Create;
   for I:=pred(slCmd.Count) downto 0 do
-    if (slCmd[I]=cfEtp) or (slCmd[I]=cfNrm) then
+    if (slCmd[I]=cfEtp)
+    or (slCmd[I]=cfNrm)
+    or (slCmd[I]=cfTxr) then
     begin
-      Result.Add(slCmd[I]);
+      Result.Insert(0,slCmd[I]);
       slCmd.Delete(I)
     end;
 end;
@@ -259,7 +141,7 @@ begin
   if sVal='low' then Result:=0 else //keine Beschränkung
   if sVal='medium' then Result:=1 else //geringe Beschränkung
   if sVal='high' then Result:=2 else //starke Beschränkung
-    Tools.ErrorOut(2,cBnd);
+    Tools.ErrorOut(3,cBnd);
 end;
 
 { pKn berechnet Kernel- und DTM-Transformationen und speichert das Ergebnis
@@ -302,44 +184,6 @@ begin
   end;
 end;
 
-{ pHe erzeugt oder verknüpft das Arbeitsverzeichnis und richtet die Protokolle
-  ein. Mit "clear=true" oder "eeClr=True" löscht pHe das Arbeitsverzeichnis
-  vollständig. Für die Protokolle sollten mit "log=Verzeichnis" ein geeigneter
-  Ort gewählt werden. }
-
-function tParse.Home(iLin:integer; slPrc:tStringList):integer;
-const
-  cDir = 'pHe: Cannot create directory: ';
-  cHme = 'pHe: Imalys needs a working directory "user-home/.imalys" !';
-var
-  bClr:boolean=False; //Home-Verzeichnis leeren
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I; //aktuelle Zeile
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='directory' then eeHme:=sVal  else //Arbeits-Verzeichnis
-    if sKey='clear' then bClr:=sVal='true' else
-    if sKey='log' then eeLog:=sVal else //Protokoll-Verzeichnis
-      Tools.ErrorOut(2,cHme+sVal);
-  end;
-
-  if not DirectoryExists(eeHme) then CreateDir(eeHme); //Arbeitsverzeichnis
-  eeHme:=Tools.SetDirectory(eeHme); //Delimiter ergänzen
-  if bClr then Tools.OsCommand('sh','rm -R '+eeHme+'*'); //Verzeichnis leeren
-  slPrc.SaveToFile(eeHme+'commands'); //NUR KONTROLLE
-
-  if not DirectoryExists(eeLog) then //Verzeichnis für Protokolle
-    if not CreateDir(eeLog) then raise Exception.Create(cDir+eeLog);
-  eeLog:=Tools.SetDirectory(eeLog); //Delimiter ergänzen
-  eeNow:='Process: '+FormatDateTime('[YYYY-MM-DD] [tt]',Now)+#10; //Datum + Uhrzeit als ID
-  Tools.TextAppend(eeLog+cfOut,ccPrt+eeNow+#10); //Trenn-Linie für Prozess-Output
-  Tools.TextAppend(eeLog+cfCmd,ccPrt+eeNow+#10+slPrc.Text); //aktuelle Befehle ergänzen
-  Tools.TextAppend(eeLog+cfErr,ccPrt+eeNow+#10); //neues Kapitel
-end;
-
 { pSh übergibt alle Bilder im Arbeitsverzeichnis, die zur Maske "sFlt" passen.
   pSh sucht NICHT rekursiv. ENVI Bilddaten müssen mit der Extension ".hdr"
   gesucht werden, andernfalls werden sie doppelt erfasst. }
@@ -352,54 +196,7 @@ begin
   for I:=pred(Result.Count) downto 0 do
     if ExtractFileExt(Result[I])='.hdr' then
       Result[I]:=ChangeFileExt(Result[I],''); //Bild statt Header
-  Tools.HintOut(true,'Parse.Search: '+IntToStr(Result.Count)+' files');
-end;
-
-{ pRp ersetzt im Hook Variable im Format "$Ziffer" durch den Text nach dem "="
-  Zeichen. pRp ersetzt jedes Vorkommen im übergebenen Text. pRp ignoriert
-  Leerzeichen, Tabs und dergl. nach dem Gleichheits-Zeichen.
-  VARIABLE DÜRFEN NUR AUS ZWEI BUCHSTANEN (DOLLAR-ZEICHEN + ZIFFER) BESTEHEN }
-
-function tParse.Replace(iLin:integer; slPrc:tStringList):integer;
-const
-  cKey = 'pRe: Alias definition must be formatted as "$Figure = Value"';
-  cVar = 'pRe: Variable not defined: $';
-var
-  iPst:integer; //Position "$" in slPrc-Zeile
-  iRow:integer; //Zeile in "slVar" ab Null
-  iVid:integer; //Variable-ID aus slPrc-Zeile
-  slVar:tStringList=nil; //Variable als Liste
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  C,I:integer;
-begin
-  try
-    slVar:=tStringList.Create;
-    for I:=succ(iLin) to pred(slPrc.Count) do
-    begin
-      Result:=I; //aktuelle Zeile
-      if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-      if sKey[1]<>'$' then Tools.ErrorOut(2,cKey+sKey); //nicht definierte Eingabe
-      iRow:=StrToInt(sKey[2]); //laufende Nummer = Zeile in "slVar"
-      while slVar.Count<=iRow do
-        slVar.Add(#32); //"leere" Zeile
-      slVar[iRow]:=sVal; //eigegebener Wert
-    end;
-
-    for C:=I to pred(slPrc.Count) do //nicht Definitionen
-    begin
-      iPst:=pos('$',slPrc[C]); //Variable suchen
-      while iPst>0 do
-      begin
-        iVid:=StrToInt(slPrc[C][succ(iPst)]); //Variablen-ID als Zahl
-        if iVid>=slVar.Count then Tools.ErrorOut(2,cVar+IntToStr(iVid)); //nicht definierte Eingabe
-        slPrc[C]:=copy(slPrc[C],1,pred(iPst))+slVar[iVid]+
-          copy(slPrc[C],iPst+2,$FF); //Variable einsetzen
-        iPst:=pos('$',slPrc[C]); //nächste Variable
-      end;
-    end;
-  finally
-    slVar.Free;
-  end;
+  Tools.HintOut(true,'Search: '+IntToStr(Result.Count)+' files');
 end;
 
 { pZs erzeugt aus dem mit "select" übergebenen Bild neue Zonen und visualisiert
@@ -413,6 +210,7 @@ const
   cCmd = 'Key misspelled or not appropriate for "zones": ';
   cGrw = 'Key misspelled or not appropriate for "zones": ';
 var
+  bDem:boolean=False; //Micro-Catchments aus Höhenmodell erzeugen
   iGrw:integer=1; //Typ Zonen-Wachstum (Vorgabe = medium)
   iMin:integer=0; //kleine Zonen nachträglich löschen
   iSze:integer=50; //Pixel pro Zone (Mittelwert)
@@ -425,223 +223,26 @@ begin
     Result:=I; //aktuelle Zeile
     if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
     if sKey='bonds' then iGrw:=Bonds(sVal) else
-    // if sKey='apply' then sCpy:=wDir(sVal) else
+    if sKey='elevation' then bDem:=sVal='true' else
     if sKey='select' then sImg:=wDir(sVal) else
     if sKey='sieve' then iMin:=StrToInt(sVal) else
     if sKey='size' then iSze:=StrToInt(sVal) else
       Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
   end;
 
-  // if sCpy<>'' then _ImportZones(sIdx) else
-  if iGrw>=0 then
-  begin
-    Image.AlphaMask(sImg); //NoData-Maske auf alle Kanäle ausdehnen
-    Union.xZones(iGrw,iSze,sImg); //Zonen erzeugen
-  end
-  else if iGrw=-1 then Union.xBorders(sImg) //Klassen abgrenzen
-  else Tools.ErrorOut(2,cGrw); //nicht definierte Eingabe
+  if bDem then Union.xDemZones(sImg) else //Micro-Catchments (für Hydrologischen Abfluss)
+  if iGrw=-1 then Union.xMapZones(sImg) else //Vektor-Layer aus Klassen
+  if (iGrw>=0) and (Image.AlphaMask(sImg)>0) then //NoData-Maske auf alle Kanäle ausdehnen
+    Union.xImgZones(iGrw,iSze,sImg); //Zonen aus Bilddaten
   if iMin>0 then Limits.xSieveZones(iMin); //kleine Zonen löschen
 end;
 
-{ pSn löscht alle Dateinamen aus der Liste "slImg" die außerhalb des Bereichs
-  "sPrd" liegen. pSn unterstellt, dass der Dateiname mit dem Datum endet und
-  das Datum als YYYYMMDD codiert ist. "sPrd" muss aus zwei solchen Blöcken mit
-  dem ersten und dem letzten zulässigen Datum bestehen. }
-
-procedure tParse.MaskPeriod(
-  slImg:tStringList; //Bildnamen
-  sPrd:string); //Zeitperiode [YYYYMMDD-YYYYMMDD]
-const
-  cDat = 'pMP: No date found at: ';
-  cPrd = 'pMP: Selection period must be passed as "YYYYMMDD - YYYYMMDD"';
-var
-  iDat:integer; //Datum im Dateinamen
-  iHig,iLow:integer; //Zeitperiode
-  I:integer;
-begin
-  if (TryStrToInt(LeftStr(sPrd,8),iLow)=False) //erstes Datum
-  or (TryStrToInt(RightStr(sPrd,8),iHig)=False) then //letztes Datum
-    Tools.ErrorOut(2,cPrd); //falsche Eingabe
-
-  for I:=pred(slImg.Count) downto 0 do
-  begin
-    if TryStrToInt(RightStr(ChangeFileExt(slImg[I],''),8),iDat)=False then //Datum im Bild
-      Tools.ErrorOut(2,cDat+slImg[I]); //falsche Eingabe
-    if (iDat<iLow) or (iDat>iHig) then
-      slImg.Delete(I); //Bild aus Liste löschen
-  end;
-  Tools.HintOut(true,'Parse.Period: '+IntToStr(slImg.Count)+' images');
-end;
-
-{ pFs ersetzt die Zonen-Attribut-Tabelle "Index.bit". Mit "select" übernimmt
-  pFs alle Kanäle aus dem Bild "sImg" als Attribute. "sImg" muss nicht das Bild
-  sein, mit dem die Zonen gebildet wurden, es muss lediglich dieselbe Länge und
-  Breite haben. Mit "execute" erzeugt pFs Attribute aus der Geometrie der Zonen
-  und aus den Pixeln einzelner Zonen. Dazu trennt pFs die Befehle in die Listen
-  "slCmd" und "slKrn". "diffusion" implementiert einen Werteausgleich für
-  Geometrie-Attribute. Mit "values" erzeugt pFs ein Attribut-Kontroll-Bild. }
-
-function tParse.Features(iLin:integer; slPrc:tStringList):integer;
-const
-  cCmd = 'pFs: Key misspelled or not appropriate for "attribute": ';
-  cFit = 'pFs: Image size must fit zones geometry!';
-var
-  bApd:boolean=False; //Attribute nicht erweitern sondern neu rechnen
-  bVal:boolean=False; //Bild aus Attribut-Tabelle
-  iGen:integer=0; //Generationen für Attribut-Ausgleich
-  sImg:string=''; //Bilddaten für Attribute + SCHALTER
-  slCmd:tStringList=nil; //Befehle für Zonen-Attribute
-  slKrn:tStringList=nil; //Befehle für Zonen-Kernel
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  try
-    slCmd:=tStringList.Create;
-    for I:=succ(iLin) to pred(slPrc.Count) do
-    begin
-      Result:=I; //aktuelle Zeile
-      if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-      if sKey='append' then bApd:=sVal='true' else //Attribute an bestehende Liste anhängen
-      if sKey='diffusion' then iGen:=StrToInt(sVal) else //Attribute "weich" rechnen
-      if sKey='execute' then slCmd.Add(sVal) else //Attribute aus Zonen-Geometrie
-      if sKey='select' then sImg:=wDir(sVal) else //Bilddaten (Stack) für Attribute
-      if sKey='values' then bVal:=sVal='true' else //Attribute-Bild erzeugen
-        Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
-    end;
-
-    if bApd=False then DeleteFile(eeHme+cfAtr); //bestehende Attribute löschen
-    slKrn:=SplitCommands(slCmd); //Kernel-Befehle getrennt verarbeiten!
-    if length(sImg)>0 then //Attribute aus Bilddaten
-    begin
-      if not Build.SizeFit(eeHme+cfIdx,sImg) then Tools.ErrorOut(2,cCmd+sKey); //nicht definierte Eingabe
-      Image.AlphaMask(sImg); //NoData-Maske auf alle Kanäle ausdehnen
-      Build.xAttributes(sImg); //Attribute aus allen Bilddaten (Mittelwerte)
-      if slKrn.Count>0 then Build.xKernels(slKrn,sImg); //Attrubute aus Zonen-Kerneln
-    end;
-    if slCmd.Count>0 then Build.xFeatures(sImg,slCmd); //Attribute aus Zonen-Geometrie
-    if iGen>0 then Build.xDiffusion(iGen,eeHme+cfAtr); //Attribut lokal mitteln
-{   ToDo: [RECENT] "Build._xDiffusion" testen }
-    if bVal then Build.xZoneValues(eeHme+cfAtr); //Raster-Bild aus Attributen
-  finally
-    slCmd.Free;
-    slKrn.Free;
-  end;
-end;
-
-{ pMp erzeugt ein Klassen-Modell und clustert damit Bilddaten. Mit "pixel" als
-  Modell clustert pMp den Import auf Pixelbasis, mit "zonal" Zonen-Attribute
-  und mit "fabric" Zonen-Kontakte. Für "region" und "fabric" muss ein Zonen-
-  Index erzeugt oder importiert werden. Der "entropy" Prozess benötigt eine
-  Pixel-Klassifikation. }
-
-function tParse.Mapping(iLin:integer; slPrc:tStringList):integer;
-const
-  cKey = 'pMg: Keyword not defined: ';
-var
-  bVal:boolean=False; //Klassen in Bildfarben
-  fEql:single=0; //Werte normalisieren
-  iGen:integer=0; //Diffusion in Stufen NUR "xFabricMap"
-  iItm:integer=30; //Vorgabe Anzahl Ergebnis-Klassen
-  iSmp:integer=30000; //Vorgabe Stichproben für Klassifikation
-  sAtr:string=''; //Zonen-Attribute
-  sImg:string=''; //Vorbild
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I; //aktuelle Zeile
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='classes' then iItm:=StrToInt(sVal) else //Anzahl Cluster
-    if sKey='fabric' then iGen:=StrToInt(sVal) else //Klassen-Muster
-    if sKey='equalize' then fEql:=StrToFloat(sVal) else //Werte normalisieren
-    if sKey='samples' then iSmp:=StrToInt(sVal) else //Anzahl Stichproben
-    if sKey='select' then sImg:=wDir(sVal) else //Vorbild
-    if sKey='values' then bVal:=sVal='true' else
-      Tools.ErrorOut(2,cKey+sKey) //nicht definierte Eingabe
-  end;
-
-{ TODO: Bilder werden mit Percentilen normalisiert, Attribute mit der Standard-
-        Abweichung. Percentile für Attribute anbieten! }
-
-  if sImg=eeHme+cfIdx then //Zonen klassifizieren
-  begin
-    if fEql>0
-      then sAtr:=Build.xEqualFeatures(fEql)  //Attribute normalisieren
-      else sAtr:=eeHme+cfAtr;
-    Model.xZonesMap(iItm,iSmp,sAtr); //Klassen-Attribut + Bild
-    if iGen>0 then
-      Model._xFabricMap(iGen,iSmp) //Kontext-Attribute klassifizieren
-  end
-  else
-  begin
-    if fEql>0 then sImg:=Filter.Normalize(iSmp,sImg); //Bildwerte normalisieren
-    Model.xPixelMap(iItm,iSmp,sImg); //Klassen-Bild
-  end;
-
-  if bVal then Model.ClassValues(5,4,3); //RGB-Palette aus Klassen-Definition
-end;
-
-{ pDT gibt "true" zurück, wenn als Key "true" übergeben wird. In allen anderen
-  Fällen ist pDT "false". }
-
-function tParse.DataType(sKey:string):integer;
-begin
-  Result:=byte(sKey='true');
-end;
-
-{ pRn überetzt "time" in (-1), "bands" in (+1) und alles Andere in Null }
+{ pRn überetzt "date" in (-1), "bands" in (+1) und alles Andere in Null }
 
 function tParse.Retain(sVal:string):integer;
 begin
-  if sVal='time' then Result:=-1 else
+  if sVal='date' then Result:=-1 else
   if sVal='bands' then Result:=1 else Result:=0;
-end;
-
-{ pNQ schreibt für alle Kanäle den Quality-Faktor 99.9% . Damit werden alle
-  Kanäle übernommen. }
-
-procedure tParse.NoQuality(slArc:tStringList);
-var
-  I:integer;
-begin
-  for I:=0 to pred(slArc.Count) do
-    slArc.Objects[I]:=tObject(pointer(999)) //Qualität als Zeiger
-end;
-
-{ pRO bestimmt den Abfluss aus einem Höhenmodell und gibt das Ergebnis als
-  Zonen, Abfluss, Einzugsgebiete und Vektor-Schema zurück. pRO speichert Ebenen
-  und Einzugsgebiete lokaler Minima als Zonen ("micro"), die Zonen-Attribute
-  "runoff.bit" sind die Verknüpfung der Zonen und die Koordinaten der Abfluss-
-  Punkte am Rand der Zonen. Zusäzlich speichert pRO ein Bild der globalen
-  Eiznugsgebiete "catchment", wie es sich aus dem aktuellen Ausschnitt ergibt.}
-
-function tParse.RunOff(iLin:integer; slPrc:tStringList):integer;
-const
-  cKey = 'Key misspelled or not appropriate for "runoff": ';
-var
-  fNod:single=1-MaxInt; //Wert für NoData
-  iLmt:integer=100; //Minimum Einzugsgebiete
-  iPln:integer; //Anzahl Ebenen
-  sDem:string=''; //Name Höhenmodell
-  sTrg:string=''; //Name Ergebnis (kann fehlen)
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I; //aktuelle Zeile
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='nodata' then fNod:=StrToFloat(sVal) else //nicht definierter Wert
-    if sKey='control' then iLmt:=StrToInt(sVal) else //Minimum Catchments
-    if sKey='select' then sDem:=wDir(sVal) else //Bildquelle
-    if sKey='target' then sTrg:=wDir(sVal) else //neuer Name NICHT AKTIVIERT
-      Tools.ErrorOut(2,cKey);
-  end;
-
-  iPln:=Drain.xBasins(fNod,iLmt,sDem); //primäre Zonen, Zonen-Attribute
-  Lines.xDrainPoints(); //Abfluss-Punkte am Rand der Zonen
-  Lines.xDrainLines(iPln); //Vektor-Darstellung des Abflusses
 end;
 
 { pFn übernimmt mit "select" ein Bild und reduziert seine Kanäle entsprechend
@@ -661,172 +262,61 @@ end;
   sollen die Bedienung erleichtern. "bands" ist nur mit ":" gültig, "formula"
   ignoriert ":"}
 
+{ HINT: "reduce" kann zur Kalibrierung verwendet werden wenn die Rohdaten nicht
+        in einem Archiv stehen }
+
 function tParse.Flatten(iLin:integer; slPrc:tStringList):integer;
 const
+  cErr = 'pFl: Reduce command terminated';
   cKey = 'pFl: Undefined parameter under "reduce": ';
 var
   iCnt:integer=0; //Kanäle/Hauptkomponenten
   iRtn:integer=0; //auf einen Kanal reduzieren [-1..+1]
   slCmd:tStringList=nil; //Prozesse für gleiche Bildquelle
-  sArt:string='B3:B4'; //Kanäle für NDVI aus Landsat-5-9 oder Sentinel-2 (optisch)
+  sArt:string=''; //Kanäle für NDVI aus Landsat-5-9 oder Sentinel-2 (optisch)
   sImg:string=''; //Bildquelle
   sTrg:string=''; //gewählter Ergebnis-Name
   sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
   I:integer;
 begin
   try
-    slCmd:=tStringList.Create;
-    for I:=succ(iLin) to pred(slPrc.Count) do
-    begin
-      Result:=I; //aktuelle Zeile
-      if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-      if sKey='bands' then sArt:=sVal else //Kanal-IDs GLEICHE VARIABLE WIE "FORMULA"
-      if sKey='count' then iCnt:=StrToInt(sVal) else //Anzahl Hauptkomponenten
-      if sKey='execute' then slCmd.Add(sVal) else //Prozess-Namen (Liste)
-      if sKey='formula' then sArt:=sVal else //Arithmetik GLEICHE VARIABLE WIE "BANDS"
-      if sKey='retain' then iRtn:=Retain(sVal) else //Zeitpunkt oder Spektrum oder Null
-      if sKey='select' then sImg:=wDir(sVal) else //Bildquelle
-      if sKey='target' then sTrg:=wDir(sVal) else //neuer Name
-        Tools.ErrorOut(2,cKey+sKey);
-    end;
-    for I:=0 to pred(slCmd.Count) do //alle Befehle
-    begin
-      if slCmd[I]=cfPca then //alle Hauptkomponenten
+    try
+      slCmd:=tStringList.Create;
+      for I:=succ(iLin) to pred(slPrc.Count) do
       begin
-        Image.AlphaMask(sImg); //gleicher Definitionsbereich für alle Kanäle
-        Separate.xPrincipal(iCnt,sImg); //rotieren
-        Image.HSV(eeHme+cfPca); //in HSV-Farben
-      end
-      else if slCmd[I]=cfQuy then Reduce.QualityImage(sImg,sTrg) //Quality-Image für Eingangs-Stack
-      else if iRtn<0 then Reduce.xHistory(sArt,slCmd[I],sImg,sTrg) //Zeitreihe erzeugen
-      else if iRtn>0 then Reduce.xSplice(sArt,slCmd[I],sImg,sTrg) //Spektralbild erzeugen
-      else Reduce.xReduce(sArt,slCmd[I],sImg,sTrg); //auf einen Kanal reduzieren ODER maskieren
-{     TODO: Reduce.Execute sollte NoData aufheben können: "?" steht für NoData,
-            der Wert danach für den Ersatz → B1?0 ersetzt alle Nodata-Werte in
-            "B1" durch Null, → B1>0?0 setzt alle positiven Werte durch 1 und
-            anschließend alle NoData-Werte durch Null }
-    end;
-  finally
-    slCmd.Free;
-  end;
-end;
-
-{ pCg erzeugt eine Liste aus Polygonen im WKT-Format die die Bildfläche aller
-  Landsat-Archive im Verzeichnis "archives" enthält und speichert das Ergebnis
-  als "target". pCg verwendet geographische Koordinaten (EPSG = 4326). }
-
-function tParse.Catalog(iLin:integer; slPrc:tStringList):integer;
-const
-  cFmt = 'WKT,Integer64(10),String(250)';
-  cKey = 'pCg: Undefined parameter under "catalog": ';
-var
-  sMsk:string=''; //Maske Archiv-Namen
-  sTrg:string='boundingbox.csv'; //Dateiname für Datenbank
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  for I:=succ(iLin) to pred(slPrc.Count) do
-  begin
-    Result:=I; //aktuelle Zeile
-    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='archives' then sMsk:=sVal else
-    if sKey='target' then sTrg:=ChangeFileExt(sVal,'.csv') else
-      Tools.ErrorOut(2,cKey+sKey) //nicht definierte Eingabe
-  end;
-
-  Tools.TextOut(sTrg,Archive.xCatalog(sMsk).Text); //Bounding-Box im CSV-Format?
-  Tools.TextOut(ChangeFileExt(sTrg,'.csvt'),cFmt); //Spaltendefinition
-  Tools.TextOut(ChangeFileExt(sTrg,'.prj'),ccPrj); //EPSG = 4326
-end;
-
-{ pIt extrahiert, bescheidet, maskiert und kalibriert Bilddaten aus Archiven
-  und speichert die Ergebnisse im Arbeitsverzeichnis als Sensor_Kachel_Datum. }
-{ Mit "database", "distance", "period" und "frame" können passende Archive
-  gefiltert werden. Die "database" enthält ein Polygon der Bilddaten. pIt
-  ignoriert Bilder außerhalb des mit "frame" übergebenen ROI und importiert nur
-  Bilddaten innerhalb des "frame". "Period" [YYYYMMDD-YYYYMMDD] reduziert die
-  selektierten Bilddaten auf eine beliebige Zeitperiode. Mit "select", "search"
-  und "frame" können Archiv-Namen und Ausschnitte auch direkt gewählt werden. }
-{ "Quality" [0..1] und "cover" [0..1] reduzieren gewählte oder gefilterte
-  Auswahl auf Bilder, die mehr als "quality" klare Pixel enthalten und die vom
-  gewählten "frame" mindestens den Anteil "cover" abdecken. }
-
-function tParse.Import(iLin:integer; slPrc:tStringList):integer;
-const
-  cKey = 'pIp: Undefined parameter under "import": ';
-  cTyp = 'pIp: Sensor-type not detected!';
-var
-  bMsk:boolean=True; //gestörte Pixel maskieren CONSTANT
-  fFct:single=1.0; //Faktor für Kalibrierung CONSTANT
-  fCpx:single=0.0; //gemessener Anteil klare Pixel
-  fLmt:single=0.0; //Minimum fehlerfreie Pixel
-  fOfs:single=0.0; //Offset für Kalibrierung CONSTANT
-  rImg:trFrm; //Bounding Box der Bildkachel
-  rRoi:trFrm; //Bounding Box des ROI
-  rSct:trFrm; //Rahmen-Bild-verschnitt
-  sArc:string=''; //Archiv Dateiname (ohne Koordinaten)
-  sBnd:string=''; //Filter für Kanal-Namen, kommagetrennt
-  sDat:string=''; //Datum (isoliert)
-  sFrm:string=''; //Rahmen für Kachel-Ausschnitt
-  sGrv:string=''; //Archiv-Zentren-Liste
-  sImg:string=''; //Dateiname im Arbeitsverzeichnis
-  sPrd:string=''; //Zeitperiodde für Auswahl
-  sTyp:string=''; //Sensor für Import/Kalibrierung CONSTANT
-  sWkt:string=''; //Polygon im WKT-Format
-  slArc:tStringList=nil; //Archiv-Namen
-  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
-  I:integer;
-begin
-  try
-    slArc:=tStringList.Create;
-    for I:=succ(iLin) to pred(slPrc.Count) do
-    begin
-      Result:=I; //gültige Zeile
-      if not GetParam(slPrc[I],sKey,sVal) then break; //neuer Befehl
-      if sKey='bands' then sBnd:=sVal else //Kanal-Namen-Masken, kommagetrennt
-      if sKey='database' then sGrv:=sVal else //Position und Namen im WKT-Format
-      if sKey='frame' then sFrm:=wDir(sVal) else //Rahmen für Beschnitt
-      if sKey='factor' then fFct:=StrToFloat(sVal) else //Faktoren für Kanal-Kalibrierung
-      if sKey='offset' then fOfs:=StrToFloat(sVal) else //Offset für Kalibrierung
-      if sKey='period' then sPrd:=sVal else //Zeitperiode
-      if sKey='quality' then fLmt:=StrToFloat(sVal) else //Maximum Fehler
-      if sKey='select' then slArc.Add(sVal) else //direkt gewähltes Archiv
-      if sKey='sensor' then sTyp:=LowerCase(sVal) else //Sensor-Typ
-        Tools.ErrorOut(2,cKey+sKey);
-    end;
-
-    if length(sFrm)>0
-      then rRoi:=Cover.VectorCrsFrame(4326,sFrm) //ROI-Box, geographisch
-      else rRoi:=crFrm; //Vorgabe = endlos groß
-    rSct:=crFrm; //Vorgabe = alles
-
-{ TODO: [URGENT] archive auch manuell auswählen → Archive.ImportLandsat direkt aufrufen }
-
-    if length(sGrv)>0 then //Archiv-Datenbank (nur Landsat)
-    begin
-      slArc.LoadFromFile(sGrv);
-      //slArc.Count<1?
-      for I:=1 to pred(slArc.Count) do //Archiv-Namen ohne Kopf-Zeile
-      begin
-        sArc:=copy(slArc[I],succ(rPos(',',slArc[I])),$FFF); //Dateiname am Ende
-        sDat:=copy(ExtractFileName(sArc),18,8); //Datum im Dateinamen
-        sWkt:=ExtractWord(1,slArc[I],['"']); //WKT-Polygon aus Archiv-Liste
-        rImg:=Lines.LandsatFrame(sWkt); //Bounding-Box der Bildkachel, geographisch
-        if Archive.QueryDate(sDat,sPrd) and //übergebenen Zeitraum filtern
-           Archive.QueryPosition(rRoi,rImg) //nutzbare Bildfläche
-        then fCpx:=Archive.QueryQuality(rImg,rRoi,rSct,sArc) //Anteil klare Pixel, rotierte Bounding-Box
-        else fCpx:=0;
-        if fCpx>=fLmt then
-        begin
-          sImg:=Archive.ImportLandsat(rSct,sArc,sBnd); //Bild importieren, neuer Name
-          {Archive._ImportAster_(sArc:string):string;}
-          {Archive._ImportRapidEye_(sArc:string):string;}
-          Header.AddLine('quality',FloatToStr(fCpx),sImg); //Anteil klare Pixel im Header
-        end;
+        Result:=I; //aktuelle Zeile
+        if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+        if sKey='bands' then sArt:=sVal else //Kanal-IDs GLEICHE VARIABLE WIE "FORMULA"
+        if sKey='count' then iCnt:=StrToInt(sVal) else //Anzahl Hauptkomponenten
+        if sKey='execute' then slCmd.Add(sVal) else //Prozess-Namen (Liste)
+        if sKey='formula' then sArt:=sVal else //Arithmetik GLEICHE VARIABLE WIE "BANDS"
+        if sKey='retain' then iRtn:=Retain(sVal) else //Zeitpunkt oder Spektrum oder Null
+        if sKey='select' then sImg:=wDir(sVal) else //Bildquelle
+        if sKey='target' then sTrg:=wDir(sVal) else //neuer Name
+          Tools.ErrorOut(2,cKey+sKey);
       end;
+
+      for I:=0 to pred(slCmd.Count) do //alle Befehle
+      begin
+        if slCmd[I]=cfPca then //alle Hauptkomponenten
+        begin
+          Image.AlphaMask(sImg); //gleicher Definitionsbereich für alle Kanäle
+          Separate.xPrincipal(iCnt,sImg); //rotieren
+          Image.HSV(eeHme+cfPca); //in HSV-Farben
+        end
+        else if slCmd[I]=cfLui then Reduce.xComposit(sImg,sTrg) //AOI-Komposit
+        else if slCmd[I]=cfQuy then Reduce.xQualityImage(sImg,sTrg) //Quality-Image für Eingangs-Stack
+        else if iRtn<0 then Reduce.xHistory(sArt,slCmd[I],sImg,sTrg) //Zeitreihe erzeugen
+        { ToDo: "xHistory" erwartet nach der Zeit sortierte Bilder.
+          Nur "Compile.xMergeBands sortiert die Bilder }
+        else if iRtn>0 then Reduce.xSplice(sArt,slCmd[I],sImg,sTrg) //Spektralbild erzeugen
+        else Reduce.xReduce(sArt,slCmd[I],sImg,sTrg); //auf einen Kanal reduzieren ODER maskieren
+      end;
+    finally
+      slCmd.Free;
     end;
-  finally
-    slArc.Free;
+  except
+    on tStepError do Tools.ErrorOut(0,cErr);
   end;
 end;
 
@@ -863,99 +353,476 @@ begin
        Tools.ErrorOut(2,cKey+sKey); //nicht definierte Eingabe
   end;
 
-  if length(sPnt)>0 then Points.xPointAttrib(0,sFtr,sPnt) else
-  if length(sGrd)>0 then Points.xGridAttrib(sGrd,sImg,'') else //Bildwerte auf Raster projizieren
-  if bSts then Table._xImageStats(cSmp,sImg) else //statistische Kennwerte
+  if length(sPnt)>0 then Points.xPointAttrib(0,sFtr,sPnt) else //Bildwerte auf Punkte übertragen
+  if length(sGrd)>0 then Points.xGridAttrib(sGrd,sImg,'') else //Bildwerte auf Gitter projizieren
+  if bSts then Table.xImageStats(cSmp,sImg) else //statistische Kennwerte
   if bCrl then Table.xLayerCorrelate(sImg); //Korrelation Layer 1 mit allen anderen
-  //if bCrl then Table._xTimeCorrelation_(sImg:string):tn2Sgl; IN ARBEIT
 end;
 
-{ pCe speichert alle übergebenen Bilder als Stack "compile" im Arbeits-
-  Verzeichnis. Das Format ist immer 32Bit float. Die Dateinamen können direkt
-  gewählt (select) oder mit Wildchars selektiert werden (search). Fehlt der
-  Pfadname, sucht pCe im Arbeitsverzeichnis. Die Auswahl kann durch eine Zeit-
-  Periode "period" weiter eingeschränkt werden. Dazu muss ein Datum [YYYYMMDD]
-  am Ende des Dateinamens stehen. }
-{ Wird pCe mit "pixel" oder "crsystem" aufgerufen, projiziert pCe alle Bilder
-  beim Import in das neue Raster. Mit "bands" können einzelne Kanäle gewählt
-  werden. Mit "nodata" kann ein eigener Wert für NoData gewählt werden. Der
-  Vorgabe-Name im Arbeitsverzeichnis "compile" kann mit "target" geändert
-  werden. }
-{ Sind die übergebenen Bilder Teile eines größeren Bilds, sollte ein Rahmen
-  "frame" für das Ergebnis angegeben werden. pCe erzeugt dann ein zusammen-
-  hängendes Bild innerhalb des Rahmens. Dabei überschreibt pCe Bildern mit
-  gleichem Datum (= gleicher Flugpfad) und erzeugt neue Ebenen für alle
-  Anderen. Das Datum [YYYYMMDD] oder das Jahr [YYYY] muss dazu am Ende des
-  Dateinamens stehen. pCe füllt leere Bereiche mit NoData. }
-{ Sind die übergebenen Bilder deckungsgleich, stapelt pCe alle Bilder in der
-  übergebenen Reihenfolge. Die Zahl der Kanäle pro Bild ist dabei beliebig. Mit
-  "clip=true" füllt pCe alle Pixel außerhalb des Rahmens mit NoData. Damit
-  können Formen wie Landesgrenzen aus den Bildern ausgeschnitten werden. }
+{ pHe erzeugt oder verknüpft das Arbeitsverzeichnis und richtet die Protokolle
+  ein. Mit "clear=true" löscht pHe das Arbeitsverzeichnis vollständig. Für die
+  Protokolle sollten mit "log=Verzeichnis" ein geeigneter Ort gewählt werden. }
 
-function tParse.Compile(iLin:integer; slPrc:tStringList):integer;
+function tParse.Home(iLin:integer; slPrc:tStringList):integer;
 const
-  cDat = 'pCe: Date [YYYYMMDD] or year [YYYY] must be passed at the end of '+
-    'each input filename!';
-  cImg = 'pCe: Image names not defined or empty image list under "compile"';
-  cKey = 'pCe: Undefined parameter under "compile": ';
+  cDir = 'pHe: Cannot create directory: ';
+  cHme = 'pHe: Imalys needs a working directory "user-home/.imalys" !';
 var
-  bClp:boolean=False; //Pixel außerhalb des Rahmens auf NoData setzen
-  bFit:boolean=False; //Bilder justieren als Vorgabe
-  bNme:boolean=False; //Dateinamen in Kanalnamen eintragen
-  fNan:single=NaN; //NoData-Value
-  iDat:integer=0; //Buchstaben für Dtum|Jahr am Ende des Dateinamens
-  iEpg:integer=0; //EPSG-Code für Umprojektion
-  iPix:integer=0; //Pixelgröße in Metern
-  rFrm:trFrm; //Bounding Box des ROI
-  slImg:tStringList=nil; //ausgewählte Bilder
-  sFrm:string=''; //Ergebnis-Name optional
-  sPrd:string=''; //Zeitperiode
-  sRdz:string=''; //Kanal-Intervall auswählen
-  sTrg:string=''; //Ergebnis-Name (Vorgabe)
+  bClr:boolean=False; //Home-Verzeichnis leeren
   sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
   I:integer;
 begin
-  sTrg:=eeHme+cfCpl; //Vorgabe-Name
+  for I:=succ(iLin) to pred(slPrc.Count) do
+  begin
+    Result:=I; //aktuelle Zeile
+    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+    if sKey='directory' then
+      eeHme:=Tools.SetDirectory(sVal) else //Arbeits-Verzeichnis
+    if sKey='clear' then bClr:=sVal='true' else
+    if sKey='log' then
+      eeLog:=Tools.SetDirectory(sVal) else //Protokoll-Verzeichnis
+      Tools.ErrorOut(2,cHme+sVal);
+  end;
+
+  if not DirectoryExists(eeHme) then CreateDir(eeHme); //Arbeitsverzeichnis
+  if bClr then Tools.OsCommand('sh','rm -R '+eeHme+'*'); //Verzeichnis leeren
+  slPrc.SaveToFile(eeHme+'commands'); //NUR KONTROLLE
+
+  if not DirectoryExists(eeLog) then //Verzeichnis für Protokolle
+    if not CreateDir(eeLog) then raise Exception.Create(cDir+eeLog);
+  eeNow:='Process: '+FormatDateTime('[YYYY-MM-DD] [tt]',Now)+#10; //Datum + Uhrzeit als ID
+  Tools.TextAppend(eeLog+cfOut,ccPrt+eeNow+#10); //Trenn-Linie für Prozess-Output
+  Tools.TextAppend(eeLog+cfCmd,ccPrt+eeNow+#10+slPrc.Text); //aktuelle Befehle ergänzen
+  Tools.TextAppend(eeLog+cfErr,ccPrt+eeNow+#10); //neues Kapitel
+end;
+
+{ pFs ersetzt oder erweitert die Zonen-Attribut-Tabelle "Index.bit". Die
+  Attributekönnen mit "append" spezifisch erweitert werden. Ohne "append werden
+  sie neu berechnet. }
+{ Für Bilddaten übernimmt pFs den Mittelwert aller Pixel in einer Zone. Dabei
+  können zwei verschiedene Quellen angegeben werden: "select" und "include".
+  Die Kernel-Befehle ("normal", "entropy" unter "execute") wirken nur auf die
+  Kanäle unter "select". Mit "include" können weitere Bilddaten für zusätzliche
+  Attribute übernommen werden. pFs kann grundsäzlich alle geometrisch passenden
+  Bilddaten mit den vorhandenen Zonen kombinieren. "diffusion" implementiert
+  einen Werteausgleich für alle Attribute. Mit "values" erzeugt pFs ein
+  Kontroll-Bildfür alle Attribute. }
+
+function tParse.Features(iLin:integer; slPrc:tStringList):integer;
+const
+  cCmd = 'pFs: Key misspelled or not appropriate for "attribute": ';
+  cFit = 'pFs: Image size must fit zones geometry!';
+var
+  bApd:boolean=False; //Attribute nicht erweitern sondern neu rechnen
+  bVal:boolean=False; //Bild aus Attribut-Tabelle
+  iGen:integer=0; //Generationen für Attribut-Ausgleich
+  sIcl:string=''; //Bild-Stapel mit zusätzlichen Attributen
+  sImg:string=''; //Bilddaten für Attribute + SCHALTER
+  slCmd:tStringList=nil; //Befehle für Zonen-Attribute
+  slKrn:tStringList=nil; //Befehle für Zonen-Kernel
+  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
+  I:integer;
+begin
   try
-    slImg:=tStringList.Create;
+    slCmd:=tStringList.Create;
     for I:=succ(iLin) to pred(slPrc.Count) do
     begin
-      Result:=I; //gültige Zeile
-      if not GetParam(slPrc[I],sKey,sVal) then break; //neuer Befehl
-      if sKey='bands' then sRdz:=sVal else //Kanal-Intervall wie "B1:B4"
-      if sKey='clip' then bClp:=sVal='true' else //Pixeel am Rand auf NoData setzen
-      if sKey='crsystem' then iEpg:=StrToInt(sVal) else //Ziel-Projektion
-      if sKey='frame' then sFrm:=sVal else //Maske aus Polygon
-      if sKey='names' then bNme:=sVal='true' else //Dateinamen in Kanalnamen eintragen
-      if sKey='nodata' then fNan:=StrToFloat(sVal) else //NoData im Vorbild
-      if sKey='pixel' then iPix:=StrToInt(sVal) else //Pixelgröße [m]
-      if sKey='period' then sPrd:=sVal else //Zeitperiode selektieren
-      if sKey='search' then slImg.AddStrings(Search(wDir(sVal))) else //Dateinamen-Filter
-      if sKey='select' then slImg.Add(wDir(sVal)) else //einzelner Name, "eeHme" ist Vorgabe
-      if sKey='target' then sTrg:=wDir(sVal) else //neuer Name AUF KONSTANTE GESETZT
-        Tools.ErrorOut(2,cKey+sKey);
+      Result:=I; //aktuelle Zeile
+      if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+      if sKey='append' then bApd:=sVal='true' else //Attribute an bestehende Liste anhängen
+      if sKey='diffusion' then iGen:=StrToInt(sVal) else //Attribute "weich" rechnen
+      if sKey='execute' then slCmd.Add(sVal) else //Attribute aus Zonen-Geometrie
+      if sKey='include' then sIcl:=wDir(sVal) else //Bilddaten auf Zonen abbilden
+      if sKey='select' then sImg:=wDir(sVal) else //Bilddaten (Stack) für Attribute
+      if sKey='values' then bVal:=sVal='true' else //Attribute-Bild erzeugen
+        Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
     end;
 
-    if length(sPrd)>0 then MaskPeriod(slImg,sPrd); //Periode filtern
-    for I:=pred(slImg.Count) downto 0 do
-      if not FileExists(slImg[I]) then slImg.Delete(I); //nür gültige Namen
-    if slImg.Count<1 then Tools.ErrorOut(3,cImg); //keine Aufgabe
-    Archive.xTransform(iPix,iEpg,sRdz,slImg); //Projektion, Pixel, Kanäle, Arbeitsverzeichnis
-    if bNme then Archive.BandNames(slImg); //Dateinamen als Kanalnamen
-    if length(sFrm)>0 //Rahmen übergeben
-      then rFrm:=Cover.VectorCrsFrame(iEpg,sFrm) //Rahmen aus Eingabe; bFit=False aus Vorgabe!
-      else rFrm:=Cover.xCover(bFit,slImg); //Rahmen aus Überlagerung der Bilder, bFit = alle Rahmen gleich
-    if (bFit=False) or (length(sFrm)>0) then //Bilder justieren
-    begin
-      iDat:=Reduce.SortDate(slImg); //sortieren nach Jahr oder Datum
-      Archive.xCompile(iDat,rFrm,sTrg,slImg) //überlagern, stapeln, beschneiden
-    end
-    else Image.StackImages(slImg,sTrg); //Bilder stapeln
-    if bClp then Cover.ClipToShape(sFrm,sTrg); //auf Frame zuschneiden
-    if not isNan(fNan) then Filter.SetNodata(fNan,sTrg); //NoData anpassen
+    if bApd=False then DeleteFile(eeHme+cfAtr); //bestehende Attribute löschen
+    slKrn:=SplitCommands(slCmd); //Kernel-Befehle getrennt verarbeiten!
+    if length(sImg)>0 then Build.xImageFeatures(sImg); //Attribute aus allen Kanälen (Mittelwerte)
+    if slKrn.Count>0 then Build.xKernelFeatures(slKrn,sImg); //Attrubute aus Zonen-Pixeln
+    if length(sIcl)>0 then Build.xImageFeatures(sIcl); //Attribute (Mittelwerte) aus weiteren Bilddaten
+    if slCmd.Count>0 then Build.xShapeFeatures(sImg,slCmd); //Attribute aus Zonen-Geometrie
+    if iGen>0 then Build.xDiffusion(iGen,eeHme+cfAtr); //Attribut lokal mitteln
+    if bVal then Build.AttributeImage(nil); //Raster-Bild aus Attributen
   finally
-    slImg.Free;
+    slCmd.Free;
+    slKrn.Free;
   end;
+end;
+
+{ pRp ersetzt im Hook Variable im Format "$Ziffer" durch den Text nach dem "="
+  Zeichen. pRp ersetzt jedes Vorkommen im übergebenen Text. pRp ignoriert
+  Leerzeichen, Tabs und dergl. nach einem Gleichheits-Zeichen.
+  VARIABLE DÜRFEN NUR AUS ZWEI BUCHSTANEN (DOLLAR-ZEICHEN + ZIFFER) BESTEHEN }
+
+function tParse.Replace(iLin:integer; slPrc:tStringList; saVar:tnStr):integer;
+var
+  iItm:integer; //ID der Variable
+  iPst:integer; //Position "$" in slPrc-Zeile
+  P:integer;
+begin
+  for P:=succ(iLin) to pred(slPrc.Count) do
+    if trim(slPrc[P])='home' then
+    begin //"home" Zeile zurückgeben
+      Result:=P;
+      break
+    end;
+
+  for P:=succ(Result) to pred(slPrc.Count) do //alle Zeilen unter "home"
+    while pos('$',slPrc[P])>0 do //Variablen-Indikator
+    begin
+      iPst:=pos('$',slPrc[P]); //Position Indikator
+      if TryStrToInt(slPrc[P][succ(iPst)],iItm) then
+        slPrc[P]:=copy(slPrc[P],1,pred(iPst))+ //Abschnitt vor Indikator
+        saVar[iItm]+copy(slPrc[P],iPst+2,$FFF); //Variable + Abschnitt nach Indikator
+    end;
+end;
+
+{ pCI prüft, ob mindestens eine gültige Datei in "slImg" übergeben wurde }
+
+function tParse.CheckInput(slImg:tStringList):boolean;
+var
+  I:integer;
+  qS:string;
+begin
+  for I:=pred(slImg.Count) downto 0 do
+  begin
+    qS:=slImg[I];
+    if not FileExists(slImg[I]) then
+      slImg.Delete(I);
+  end;
+  Result:=slImg.Count>0
+end;
+
+{ pCF prüft ob "slImg" nicht ENVI-formatierte Bilder enthält }
+
+function tParse.CheckExtern(slImg:tStringList):boolean;
+var
+  I:integer;
+begin
+  Result:=False; //Vorgabe = ENVI-Format
+  for I:=0 to pred(slImg.Count) do
+    if ExtractFileExt(slImg[I])<>'' then
+    begin
+      Result:=True;
+      break;
+    end;
+end;
+
+{ pCp kombiniert allen gewählten Bilder zu einem Stack. Dabei können Kanäle,
+  CRS, Pixelgröße, der NoData-Wert und der Ausschnitt gewählt werden. Leere
+  Bereiche werden auf NaN gesetzt }
+{ pCp konvertiert alle gewählten Bilder in das ENVI-Format und speichert sie im
+  Arbeitsverzeichnis. Dabei übernimmt pCp einzelne Kanäle, passt CRS und die
+  Pixelgröße an und selektiert einzelne Kanäle. pCp projiziert alle Bilder in
+  den gewählten Ausschnitt. Ist kein Ausschnitt abgegeben, verwendet pCp die
+  Abdeckung des ersten Bilds in der Liste. NACH PCP SIND ALLE BILDER DECKUNGS-
+  GLEICH. pCp vereinigt Bilder mit identischem Datum = gleicher Flugpfad zu
+  einem Bild und stapelt alle anderen chronologisch }
+{ Mit "names" können alle Kanal-Namen nachträglich neu gesetzt werden. Mit
+  "clip" setzt pCp alle Pixel außerhalb des "frame" auf NaN und mit "nodata"
+  kann ein gewählter Wert auf NaN gesetzt werden }
+
+function tParse.Compile(iLin:integer; slPrc:tStringList):integer;
+const
+  cCmd = 'pCp: Key misspelled or not appropriate for "compile": ';
+  cErr = 'pCp: Compile process terminated';
+  cImg = 'pCp: Empty result after image name selection!';
+var
+  bClp:boolean=False; //Pixel außerhalb des Rahmens auf NoData setzen
+  bMrg:boolean=False; //Kanäle mit gleichem datum vereinigen
+  fNod:single=NaN; //NoData-Value in Bilddaten
+  iEpg:integer=0; //EPSG-Nummer des Koordinatensystema
+  iPix:integer=0; //Pixelgröße in Metern
+  sArt:string=''; //Kanäle extrahieren von .. bis als BX:BY.
+  sFrm:string=''; //Dateiname geometrie mit Bounding-Box = ROI
+  sNme:string=''; //Kanal-Namen als CSV Liste
+  sTrg:string=''; //Ergebnis-Vorgabe
+  slImg:tStringList=nil; //Kanal-Namen
+  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
+  I:integer;
+begin
+  try
+    try
+      slImg:=tStringList.Create; //ausgewählte Bilder als Liste
+      sTrg:=eeHme+'compile'; //Vorgabe
+      for I:=succ(iLin) to pred(slPrc.Count) do
+      begin
+        Result:=I; //aktuelle Zeile
+        if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+        if sKey='bands' then sArt:=sVal else //Kanal-Nummern "von..bis"
+        if sKey='clip' then bClp:=sVal='true' else //Pixeel am Rand auf NoData setzen
+        if sKey='crsystem' then iEpg:=StrToInt(sVal) else //Ziel-Projektion
+        if sKey='frame' then sFrm:=wDir(sVal) else //Rahmen für Beschnitt und Auswahl
+        if sKey='merge' then bMrg:=sVal='true' else //Kanäle mit gleichem Datum überschreiben
+        if sKey='names' then sNme:=sVal else //Kanalnamen [CSV] übernehmen
+        if sKey='nodata' then fNod:=StrToFloat(sVal) else //NoData im Vorbild
+        if sKey='pixel' then iPix:=StrToInt(sVal) else //Pixelgröße [m]
+        if sKey='search' then slImg.AddStrings(Search(wDir(sVal))) else //Dateinamen-Filter
+        if sKey='select' then slImg.Add(wDir(sVal)) else //Dateinamen explizit übernehmen
+        if sKey='target' then sTrg:=wDir(sVal) else //neuer Name
+          Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
+      end;
+
+      //slImg.Count=0?
+      if CheckInput(slImg)=False then Tools.ErrorOut(3,cImg); //Eingabe nicht definiert?
+      if sTrg='' then sTrg:=eeHme+'compile'; // Vorgabe für Ergebnis verwenden
+      if (iEpg>0) or (iPix>0) or (sFrm<>'') or CheckExtern(slImg) then //Transformationen, falsches Format
+      begin
+        Archive.xImageImport(iEpg,iPix,sArt,sFrm,slImg); //ENVI-Format, projizieren, Rahmen, Kanäle als "c_Name.."
+        if bMrg
+          then Archive.xMergeBands(sTrg,slImg) //Kanäle mit gleichem Datum vereinigen, Stack
+          else Image.xStackImages(sArt,sTrg,slImg); //Bilder als Stack
+      end
+      else Image.xStackImages(sArt,sTrg,slImg); //Bilder als Stack
+      if length(sNme)>0 then Header.BandNames(sNme,sTrg); //Kanalnamen überschreiben
+      if bClp then Cover.xClipToShape(sFrm,sTrg); //auf Frame zuschneiden
+      if not isNan(fNod) then Filter.xSetNodata(fNod,sTrg); //NoData anpassen
+    finally
+      slImg.Free;
+    end;
+  except
+    on tStepError do Tools.ErrorOut(0,cErr);
+  end;
+end;
+
+//Konstante für Sensor-Typ [Landsat, Sentinel, Verzeichnis, allgemein]
+
+function tParse._SensorType(sMsk:string):integer; //Suchmaske: [0..3]
+begin
+  if ((LeftStr(ExtractFileName(sMsk),2)='LC') //Landsat 8,9
+  or (LeftStr(ExtractFileName(sMsk),2)='LT')) and //Landsat 4,5
+     (ExtractFileExt(sMsk)='.tar') then Result:=1 //Landsat-Archiv
+  else if (LeftStr(ExtractFileName(sMsk),2)='S2') and
+    (ExtractFileExt(sMsk)='.zip') then Result:=2 //Sentinel-Archiv
+  else Result:=3; //Verzeichnis mit Bilddaten
+end;
+
+{ pIM importiert eine Imalys Klassen-Definition zusammen mit den Bilddaten }
+
+procedure tParse._ImportMapping(sSrc:string);
+begin
+  Gdal.Translate(0,1,1,crFrm,sSrc,eeHme+cfMap); //als ENVI-Datei, ungültiger Frame wird ignoriert
+  Tools.CopyFile(ChangeFileExt(sSrc,cfBit),eeHme+cfMap+cfBit)
+end;
+
+{ pIp importiert Kanäle aus komprimierten Archiven oder Sammlungen mit Rohdaten
+  der Provider und gibt sie als Multi-Kanal-Bilder im ENVI-Format zurück.
+  Kacheln, Zeitraum, Kanäle, Ausschnitt, Kalibrierung und NoData können gewählt
+  werden. Bei Landsat können mit dem QA-Kanal Bildstörungen maskiert werden }
+{ pIp selektiert Archive oder Verzeichnisse nach der Kachel-ID (tiles) und dem
+  Zeitraum (period), extrahiert bei Bedarf die gewählten Kanäle (bands),
+  beschneidet sie auf den Ausschnitt in "frame", stapelt die gewählten Kanäle
+  einzelner Bilder als "Sensor_Kachel_Datum" im Arbeitsverzeichnis }
+{ Die Kalchel-IDs können als CSV-Liste übergeben werden. Mit "quality" (nur
+  Landsat) extrahiert pIp zunächst den QA-Kanal und übernimmt nur Ausschnitte,
+  die mindestens 50% verwendbare Pixel enthalten. pIp kalibriert die Bilder mit
+  "offset" und "factor". Beide können als CSV-Liste übergeben werden, wenn die
+  Kanäle unterschiedliche Parameter benötigen. Mit "nodata" kann ein gewählter
+  Wert in den Bilddaten (z.B. Null) auf NaN gesetzt werden. Die Ergebnisse sind
+  im CRS des Providers gespeichert }
+{ ==> pIp übernimmt die Projektion der Vorbilder unverändert! }
+
+function tParse.Import(iLin:integer; slPrc:tStringList):integer;
+const
+  cCmd = 'pIt: Key misspelled or not appropriate for "import": ';
+  cErr = 'pIp: Import command terminated';
+  cImp = 'pIt: "archive" or ';
+  cSns:integer=0; //Sensor-Typ
+var
+  bQlt:boolean=False; //Landsat-QA-Layer verwenden
+  fFit:single=1.0; //Qualität akzeptieren
+  fNod:single=0.0; //NoData-Wert in Bilddaten
+  sBnd:string=''; //Kanal-Namen als CSV.
+  sFct:string=''; //Faktoren für Bild-Kalibrierung (CSV)
+  sFrm:string=''; //Dateiname geometrie mit Bounding-Box = ROI
+  sMsk:string=''; //Suchmaske für Archiv-Namen (.tar) oder Verzeichnisse
+  sOfs:string=''; //Offset(s) für Bild-Kalibrierung (CSV)
+  sPrd:string=''; //Zeitperiode als [YYYYMMDD-YYYYMMDD]
+  sRes:string=''; //STD-Name im Arbeitsverzeichnis
+  sTls:string=''; //Kachel-IDs als CSV.
+  slBnd:tStringList=nil; //ausgeählte Kanäle
+  slArc:tStringList=nil; //Verzeichnisse mit Original-Bilddaten
+  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
+  I:integer;
+begin
+  try
+    try
+      for I:=succ(iLin) to pred(slPrc.Count) do
+      begin
+        Result:=I; //aktuelle Zeile
+        if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+        if sKey='bands' then sBnd:=sVal else //Kanal-Namen als CSV.
+        if sKey='factor' then sFct:=sVal else //Faktor(en) für Kanal-Kalibrierung
+        if sKey='frame' then sFrm:=wDir(sVal) else //Rahmen für Beschnitt und Auswahl
+        if sKey='nodata' then fNod:=StrToFloat(sVal) else //NoData Wert in Bilddaten
+        if sKey='offset' then sOfs:=sVal else //Offset(s) für Kalibrierung
+        if sKey='period' then sPrd:=sVal else //Zeitperiode
+        if sKey='quality' then bQlt:=sVal='true' else //Quality-Layer einbinden
+        if sKey='search' then sMsk:=sVal else //Suchmaske für Archiv-Namen
+        if sKey='tiles' then sTls:=sVal else //Kachel-IDs als CSV.
+          Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
+      end;
+
+      if DirectoryExists(sMsk) then Tools.CopyIndex(sMsk,eeHme) else //Zonen-Definition zurückspeichern
+      if FileExists(ChangeFileExt(sMsk,cfBit)) then _ImportMapping(sMsk) else //Klassen-Defintion + Bild
+      begin
+        cSns:=_SensorType(sMsk); //Sensor-ID
+{ TODO: "search" mit einem, volständig bezeichnetem Archiv testen }
+        if cSns=1
+          then slArc:=Archive.xSelectLandsat(bQlt,sMsk,sBnd,sPrd,sTls) //gewählte Archive, Kanäle extrahieren
+          else slArc:=Archive.xSelectSentinel(sMsk,sBnd,sPrd,sTls); //Verzeichnisse mit Rohdaten, nur gewählte Kanäle
+        for I:=0 to pred(slArc.Count) do
+        begin //Bilder aus gewählten Kanälen
+          if bQlt and (cSns=1) then
+            fFit:=Archive.xQualityMask(sFrm,slArc[I]); //QA-Maske extrahieren und bewerten NUR LANDSAT
+          if fFit>0.5 then //nur ausreichende Qualität
+          begin
+            sRes:=Archive.xBandsImport(bQlt,cSns,sFrm,slArc[I]); //ENVI-Format, beschneiden, maskieren
+            Filter.xBandsCalibrate(fNod,sFct,sOfs,sRes); //kalibrieren, NoData
+          end;
+        end
+      end;
+    finally
+      slBnd.Free;
+      slArc.Free;
+    end;
+  except
+    on tStepError do Tools.ErrorOut(0,cErr);
+  end;
+end;
+
+{ pEZ exportiert Zonen als Shapes mit Attributen. Dazu bildet pET eine CSV-
+  Datei mit der Geometrie des Kontroll-Shapes "index.shp" im WKT-Format,
+  ergänzt alle Attribute aus der Tabelle "index.bit" und speichert Geometrie
+  und Attribute im Shape-Format. Ist nur das Kontroll-Shape (ohne Attribute)
+  vorhanden, kopiert pTg es unverändert in das Ziel-Verzeichnis. }
+
+procedure tParse.ExportZones(sSrc,sTrg:string);
+const
+  cExp = 'pEZ: Zone shape export not successful: ';
+var
+  iEpg:integer=0; //EPSG-Code
+begin
+  if FileExists(eeHme+cfAtr) then //Attribute existieren
+  begin
+    iEpg:=Cover.CrsInfo(eeHme+cfIdx); //EPSG-Code
+    Gdal.ImportVect(iEpg,eeHme+cfIdx+'.shp'); //CSV-Geometrie aus Kontroll-Shape
+    Points.xPolyAttrib; //Attribute aus Index.bit in CSV-Geometrie eintragen
+    Gdal.ExportShape(iEpg,0,eeHme+cfFcs,sTrg); //als Shape exportieren
+  end
+  else Tools.CopyShape(eeHme+cfIdx,sTrg); //unverändert kopieren
+  if not FileExists(sTrg) then Tools.ErrorOut(3,cExp+sTrg);
+end;
+
+{ pEM exportiert die aktuelle Klassifikation sowie die Klassen-Definition }
+
+procedure tParse._ExportMapping(sTrg:string);
+begin
+  Gdal.ExportTo(1,2,eeHme+cfMap,sTrg); //als Byte mit Palette exportieren
+  Tools.CopyFile(eeHme+cfMap+cfBit,ChangeFileExt(sTrg,cfBit)) //unter neuem Namen speichern
+end;
+
+{ pPt exportiert Bild- und Vektor-Daten aus dem Arbeitsverzeichnis an einen
+  gewählten Ort. Bei Bilddaten steuert Extension das Datenformat im Ziel. pPt
+  exportiert Bilder ohne Extension im ENVI-Format }
+{ Zonen, die Zonen-Definition und Tabellen verwenden eigene Export-Routinen }
+
+function tParse.Protect(iLin:integer; slPrc:tStringList):integer;
+const
+  cCpy = 'pTg: Image export not successful: ';
+  cKey = 'pTg: Keyword not defined: ';
+  cPrc = 'pTg: Parameter combination not defined';
+  cSrc = 'pTg: Source image not found: ';
+var
+  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
+  sSrc:string=''; //Quelle
+  sTrg:string=''; //Target-Name
+  I:integer;
+begin
+  for I:=succ(iLin) to pred(slPrc.Count) do
+  begin
+    Result:=I; //aktuelle Zeile
+    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+    if sKey='select' then sSrc:=wDir(sVal) else
+    if sKey='target' then sTrg:=wDir(sVal) else
+    Tools.ErrorOut(2,cKey+sKey); //unzulässiger Parameter
+  end;
+
+  if (length(sTrg)<1) or (length(sSrc)<1) then exit; //kein Befehl
+  if DirectoryExists(ExtractFilePath(sTrg))=False then
+    CreateDir(ExtractFileDir(sTrg)); //Sicherheit
+
+  if sSrc=eeHme+cfIdx then Tools.CopyIndex(eeHme,sTrg) else //Zonen-Definition
+  if sSrc=eeHme+cfZne then ExportZones(sSrc,sTrg) else //Zonen-Polygon
+  if sSrc=eeHme+cfMap then _ExportMapping(sTrg) else //Klassifikation
+  if sSrc=eeHme+cfTab then Tools.CopyFile(sSrc,sTrg) else //Tabelle
+  if ExtractFileExt(sTrg)<>'' then Gdal.ExportTo(0,1,sSrc,sTrg) else //anderes Format
+  if ExtractFileExt(sTrg)='' then Tools.EnviCopy(sSrc,sTrg) //ENVI-Kopie
+  else Tools.ErrorOut(3,cPrc);
+{ todo [Parse.Protect]: Export-Funktionen für Abfluss und Legacy fehlen }
+end;
+
+{ pMg clustert Bilddaten oder Zonen. Mit "select=index" clustert pMg die
+  Attribut-Tabelle der Zonen, in allen anderen Fällen die angegeben Bilddaten.
+  Die Anzahl der gewünschten Cluster wird mit "classes" übergeben, die Zahl der
+  Stichproben für die Klassifikation mit "samples". Mit "equalize" erzeugt pMg
+  temporär auf 0..1 normalisierte Bilddaten bzw. Attribute. pMg normalisiert
+  mit dem 1%-99% Percentil. Mit "fabric" klassifiziert pMg Zonen-Attribute
+  weiter zu Objekten. Der Wert von "fabric" entscheidet über die räumliche
+  Integration der Objekte. "fabric" ist nur zusammen mit "select=index"
+  wirksam. }
+
+function tParse.Mapping(iLin:integer; slPrc:tStringList):integer;
+const
+  cKey = 'pMg: Keyword not defined: ';
+var
+  bFbr:boolean=False; //Objekte erzeugen
+  bRls:boolean=False; //Abfluss am Bildrand frei geben
+  bVal:boolean=False; //Klassen in Bildfarben
+  fEql:single=0; //Werte normalisieren
+  iGen:integer=1; //Generationen bei Fabric-Klassen
+  iMap:integer=0; //Vorgabe Anzahl Ergebnis-Klassen
+  iSmp:integer=30000; //Vorgabe Stichproben für Klassifikation
+  sAtr:string=''; //Zonen-Attribute
+  sElv:string=''; //Höhenmodell, Vorbild für Zonen + Schalter
+  sImg:string=''; //Vorbild
+  sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
+  I:integer;
+begin
+  for I:=succ(iLin) to pred(slPrc.Count) do
+  begin
+    Result:=I; //aktuelle Zeile
+    if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
+    if sKey='classes' then iMap:=StrToInt(sVal) else //Anzahl Cluster
+    if sKey='equalize' then fEql:=StrToFloat(sVal) else //Werte normalisieren
+    if sKey='fabric' then bFbr:=sVal='true' else //Fabric-Klassen
+    if sKey='reach' then iGen:=StrToInt(sVal) else //Generationen bei Fabric-Klassen
+    if sKey='release' then bRls:=sVal='true' else //Abfluss am Bildrand ermöglichen
+    if sKey='runoff' then sElv:=wDir(sVal) else //Höhenmodell, Vorbild für Zonen
+    if sKey='samples' then iSmp:=StrToInt(sVal) else //Anzahl Stichproben
+    if sKey='select' then sImg:=wDir(sVal) else //Vorbild
+    if sKey='values' then bVal:=sVal='true' else //Attribute als Bild speichern
+      Tools.ErrorOut(2,cKey+sKey) //nicht definierte Eingabe
+  end;
+
+  if sImg=eeHme+cfIdx then
+  begin //Zonen klassifizieren
+    if fEql>0
+      then sAtr:=Build.xEqualFeatures(fEql) //Werte mit Percentilen normalisieren
+      else sAtr:=eeHme+cfAtr; //Standard-Attribute
+    if bFbr then Model.xFabricMap(iMap,iGen,iSmp) else //Kontext klassifizieren
+    if sElv<>'' then Model.xRunOff(bRls,sElv) else //Synthetischer Abfluss
+    if iMap>0 then Model.xZonesMap(iMap,iSmp,sAtr,eeHme+cfMap); //Klassen-Attribut + Bild
+  end
+  else
+  begin //Pixel klassifizieren
+    if fEql>0 then sImg:=Filter.xEqualImages(fEql,iSmp,sImg); //Bildwerte normalisieren
+    Model.xPixelMap(iMap,iSmp,sImg); //Klassen-Bild
+  end;
+  if bVal then Model.xClassValues(5,4,3); //RGB-Palette aus Klassen-Definition
 end;
 
 { pCh interpretiert die Prozess-Kette "sPrc". Die Kette besteht aus Befehlen
@@ -973,8 +840,10 @@ end;
 { Bilder im Arbeitsverzeichnis sind als Raw Binary mit Header im IDL-Format
   gespeichert, Vektordaten im WKT-Format als als CSV-Dateien und Tabellen für
   schnellen Zugriff im generischen BIT-Format. }
+{ ToDo: "ChainError" beendet das ganze Programm. Eigene Abfrage für
+  "X"-Routinen? }
 
-procedure tParse.xChain(slPrc:tStringList);
+procedure tParse.xChain(slPrc:tStringList; saVar:tnStr);
 const
   cCmd = 'pCn: Unknown command: ';
   cSkp = 'pCn: PROCESS CHAIN TERMINATED!';
@@ -992,21 +861,17 @@ begin
       if pos('=',slPrc[I])>0 then continue; //Parameter-Zeile ignorieren
       sCmd:=trim(slPrc[I]);
       if sCmd='' then continue; //leere Zeile
-      if sCmd='breaks' then iSkp:=_Breaks(I,slPrc) else //Brüche in Zeitreihen
-      if sCmd='catalog' then iSkp:=Catalog(I,slPrc) else //Kachel-Mitten-Katalog
-      if sCmd='compare' then iSkp:=Compare(I,slPrc) else //Referenz vergleichen
-      if sCmd='compile' then iSkp:=Compile(I,slPrc) else //Stack aus Zwischenprodukten
+      if sCmd='compare' then iSkp:=_Compare(I,slPrc) else //Referenz vergleichen
+      if sCmd='compile' then iSkp:=Compile(I,slPrc) else //Stack aus Bilddaten, Formate
       if sCmd='export' then iSkp:=Protect(I,slPrc) else //Export
-      if sCmd='focus' then iSkp:=Focus(I,slPrc) else //focale Attribute NEU!
+      if sCmd='focus' then iSkp:=Focus(I,slPrc) else //Statistik und Punkte
       if sCmd='features' then iSkp:=Features(I,slPrc) else //Zell-Attribute ergänzen
       if sCmd='home' then iSkp:=Home(I,slPrc) else //Arbeits-Verzeichnis
-{     TODO: Das Arbeitsverzeichnis ".imalys" wird nicht immer erzeugt}
       if sCmd='import' then iSkp:=Import(I,slPrc) else //Extraktion aus Archiven
       if sCmd='kernel' then iSkp:=Kernel(I,slPrc) else //Kernel-Prozesse
       if sCmd='mapping' then iSkp:=Mapping(I,slPrc) else //Clusterer
       if sCmd='reduce' then iSkp:=Flatten(I,slPrc) else //Kanäle reduzieren + Indices
-      if sCmd='replace' then iSkp:=Replace(I,slPrc) else //Variable im Hook ersetzen
-      if sCmd='runoff' then iSkp:=Runoff(I,slPrc) else //synhetischer Abfluss
+      if sCmd='replace' then iSkp:=Replace(I,slPrc,saVar) else //Variable im Hook ersetzen
       if sCmd='zones' then iSkp:=Zones(I,slPrc) else //Clusterer
         Tools.ErrorOut(2,cCmd+sCmd);
     end;
@@ -1014,90 +879,114 @@ begin
   except
     on tChainError do Tools.ErrorOut(0,cSkp); //Nachricht, weiter mit nächster Prozesskette
     on tStepError do Tools.ErrorOut(0,cSkp);
+{ ToDo: Fehler nach Möglichkeit auf Befehls-Ebene abfangen }
   end;
 end;
 
-{ xLp startet und wiederholt die Prozesskette wenn Variable als kommagetrennte
-  Liste eingetragen sind. }
-{ Variable ($1..$9) können mit einem Wert verknüft sein oder mit einer Liste
-  verschiedener Werte. Die Werte müssen durch Kommas getrennt werden. Ist
-  mindestens eine Liste angegeben, wiederholt Imalys die Prozesskette für jeden
-  Wert in der Liste. Ist mehr als eine Variable als Liste angegeben, werden
-  alle Listen gleich behandelt. Vorgabe ist die erste Variable in der Liste. }
-{ pLp prüft die Formatierung des Hooks, bestimmt die Zeilen mit Variablen-
-  Definitionen, erzeugt eine Variablen Tabelle und ersetzt die Variablen unter
-  "replace" wenn die Tabelle mehr als eine Spalte hat. "xChain" ersetzt mit
-  "replace" die Variablen in allen anderen Befehlen. }
-{ Wenn Werte aus verschiedenen Prozessen im Arbeitsverzeichnis gesammelt werden
-  sollen, kann das Arbeitsverzeichnis mit dem Schalter "-c" vor der ersten
-  Prozesskette geleert werden. }
+{ pVs überträgt Variable in der Prozesskette in eine String-Matrix. }
+{ Variable werden unter dem Befehl "replace" als "Name = Wert" definiert. pVs
+  erlaubt 10 verschiedene Namen: "$0" bis "$9". Jede definierte Eingabe kann
+  als Wert übergeben werden. Wird der Wert als kommagetrennte Liste in
+  geschweiften Klammern angegeben "{Value-1, Value-2, ...}", wiederholt "xLoop"
+  die Prozesskette für jeden Eintrag in der Liste. Wird mehr als eine Variable
+  als Liste übergeben, müssen alle Listen gleich lang sein. "xLoop" wechselt
+  alle Variablen gemeinsam. Variablen mit einem Wert werden nicht verändert und
+  können nach Belieben mit Listen gemischt werden. }
 
-procedure tParse.xLoop(sClr,sPrc:string); //Parameter, Prozesskette
+function tParse.Variables(
+  var iMax:integer; //höchste Anzahl Spalten = Iterationen
+  slPrc:tStringList):
+  tn2Str; //Variablen als Matrix
+var
+  iCnt:integer=0; //Anzahl Variable in Liste
+  iHig:integer=0; //ID der "home" Zeile
+  iItm:integer=0; //Variablen-ID
+  iLow:integer=0; //ID der "replace" Zeile
+  sLin:string=''; //aktuelle Variable (Liste)
+  C,R:integer;
+const
+  cFmt = 'pVs: Variable must be defined as "$(one figure)=value": ';
+  cHme = 'pVs: The process chain needs a "home" section!';
+  cVar = 'pVs: Variable not defined: ';
+begin
+  Result:=nil; iMax:=1; //Vorgaben
+  for R:=1 to pred(slPrc.Count) do
+  begin //Variablen-Abschnitt eingrenzen
+    if trim(slPrc[R])='replace' then iLow:=R;
+    if trim(slPrc[R])='home' then iHig:=R;
+    if iHig>0 then break; //"home"-Abschnitt erreicht
+  end;
+  if iHig=0 then Tools.ErrorOut(2,cHme); //kein "home"
+  if iLow=0 then exit; //keine Variable
+
+  SetLength(Result,10,1); //Vorgabe = eine Variable pro ID [0..9]
+  for R:=succ(iLow) to pred(iHig) do //Variablen-Block
+  begin //Variable in String-Matrix eintragen
+    if TryStrToInt(slPrc[R][succ(pos('$',slPrc[R]))],iItm)=False then
+      Tools.ErrorOut(2,cFmt+slPrc[R]);
+    sLin:=DelSpace(copy(slPrc[R],succ(pos('=',slPrc[R])),$FFF)); //alles ab "=" Zeichen
+    if sLin='' then Tools.ErrorOut(2,cVar+IntToStr(iItm));
+    if (sLin[1]='{') and (sLin[length(sLin)]='}') then
+    begin
+      sLin:=copy(sLin,2,length(sLin)-2); //Klammern entfernen
+      iCnt:=WordCount(sLin,[',']); //Anzahl Komma-getrennte Ausdrücke
+      SetLength(Result[iItm],iCnt); //Platz für Variable
+      for C:=0 to pred(iCnt) do
+        Result[iItm,C]:=ExtractWord(succ(C),sLin,[',']);
+      iMax:=max(iCnt,iMax); //größte Anzahl Variable
+    end
+    else Result[iItm,0]:=sLin; //eine Variable, auch CSV-Ausdruck
+  end;
+end;
+
+{ pLp startet die Prozesskette und wiederholt sie, wenn Variable als komma-
+  getrennte Liste eingetragen sind (vgl. "Variables"). }
+{ pLp prüft die Formatierung der Prozesskette, speichert eine bereinige Kopie,
+  ersetzt Variable durch den angegebenen Wert und führt die Prozesskette mit
+  "xChain" aus. Zu Beginn bestimmt pLp die Grenzen des "replace" Abschnitts und
+  bildet eine Matrix "sxVar" mit allen übergebenen Variablen. Wenn "sxVar" mehr
+  als eine Spalte hat, wiederholt pLp die Prozesskette "xChain" für jede Spalte
+  in "sxVar". Dabei kombiniert pLp Listen und einzelne Variable in "saTmp" }
+
+procedure tParse.xLoop(sPrc:string); //Parameter, Prozesskette
 const
   cFmt = 'pLp: Second line must contain a command. Found: ';
-  cHme = 'pLp: The process chain needs a "home" section!';
   cIdf = 'pLp: Process chain must start with the key "IMALYS"';
   cSkp = 'pLp: APPLICATION TERMINATED!';
-  cVar = 'pLp: Multiple variable lists with different word counts';
 var
-  bTbl:boolean=False; //Variablen-Tabelle gefunden
-  iCol:integer; //aktuelle Spalte in Tabelle "sxVar"
-  iHig:integer=1; //letzte Zeile mit Variablen
-  iLow:integer=1; //erste Zeile mit Variablen
-  iMax:integer=1; //Spalten in Variablen-Tabelle
-  sLin:string; //aktuelle Zeile
+  iMax:integer=0; //längste Variablen-Kette
   slPrc:tStringList=nil; //Prozesskette
+  slTmp:tStringList=nil; //Prozesskette-Kopie
+  saTmp:tnStr=nil; //Liste der aktuellen Variablen
   sxVar:tn2Str=nil; //Variable als Tabelle
-  I,K:integer;
-  qP:string;
+  M,V:integer;
 begin
   try
-    slPrc:=Tools.LoadClean(sPrc); //Prozesskette ohne Kommentare und Leerzeilen
-    if pos('IMALYS',slPrc[0])<1 then Tools.ErrorOut(2,cIdf); //Identifier
-    if pos('=',slPrc[1])>0 then Tools.ErrorOut(2,cFmt+slPrc[1]); //Parameter ohne Befehl
-    for I:=1 to pred(slPrc.Count) do
-    begin
-      qP:=slPrc[I];
-      if iHig>1 then break;
-      if (iLow>1) and (pos(',',slPrc[I])>0) then
-        bTbl:=True; //Variablen-Tabelle!
-      if trim(slPrc[I])='home' then
-        iHig:=pred(I) else //letzte Zeile Variable
-      if trim(slPrc[I])='replace' then
-        iLow:=succ(I); //erste Zeile Variable
+    //funktionieren die Variablen?
+    eeHme:='/home/'+Tools.OsCommand('whoami','')+'/.imalys/'; //Vorgabe mit Benutzer
+    eeLog:=eeHme; //Vorgabe mit Benutzer
+    try
+      slPrc:=Tools.LoadClean(sPrc); //Prozesskette ohne Kommentare und Leerzeilen
+      slTmp:=tStringList.Create; //Kopie für Iterationen
+      if pos('IMALYS',slPrc[0])<1 then Tools.ErrorOut(3,cIdf); //Identifier
+      if pos('=',slPrc[1])>0 then Tools.ErrorOut(3,cFmt+slPrc[1]); //Parameter ohne Befehl
+      sxVar:=Variables(iMax,slPrc); //Variable als Matrix, Anzahl Iterationen in iMax
+      SetLength(saTmp,length(sxVar)); //Variable für aktuelle Iteration
+      if sxVar<>nil then
+        for M:=0 to pred(iMax) do //Iterationen
+        begin //Variable für aktuelle Iteration
+          for V:=0 to high(sxVar) do //alle Variable
+            if length(sxVar[V])>1
+              then saTmp[V]:=sxVar[V,M]
+              else saTmp[V]:=sxVar[V,0];
+          slTmp.Assign(slPrc); //identische Kopie
+          xChain(slTmp,saTmp); //Prozess-Kette mit aktuellen Variablen
+        end
+      else xChain(slPrc,nil); //keine Variable
+    finally
+      slPrc.Free;
+      slTmp.Free;
     end;
-    if iHig=1 then Tools.ErrorOut(1,cHme); //Programm beenden
-
-    if bTbl then
-    begin
-      SetLength(sxVar,succ(iHig-iLow),1); //Vorgabe = ein Parameter
-      for I:=iLow to iHig do
-      begin
-        sLin:=copy(slPrc[I],succ(pos('=',slPrc[I])),$FFF); //alles ab "=" Zeichen
-        iCol:=WordCount(sLin,[',']); //Komma-getrennte Ausdrücke
-        if iCol>1 then //neue Dimension
-          if iMax=1 then
-          begin
-            SetLength(sxVar,succ(iHig-iLow),iCol);
-            iMax:=iCol;
-          end
-          else if iCol<>iMax then Tools.ErrorOut(2,cVar);
-        for K:=1 to iCol do
-          sxVar[I-iLow,pred(K)]:=ExtractWord(K,sLin,[',']);
-      end;
-
-      if trim(sClr)='-c' then Tools.OsCommand('sh','rm -R '+eeHme+'*'); //Verzeichnis leeren
-      for K:=0 to high(sxVar[0]) do //Spalten = Wiederholungen
-      begin
-        if K>0 then slPrc:=Tools.LoadClean(sPrc); //Prozesskette ohne Kommentare und Leerzeilen
-        for I:=0 to high(sxVar) do //Zeilen = Variable
-          if sxVar[I,K]<>''
-            then slPrc[iLow+I]:=#9+'$'+IntToStr(succ(I))+'='+sxVar[I,K]
-            else slPrc[iLow+I]:=#9+'$'+IntToStr(succ(I))+'='+sxVar[I,0];
-        xChain(slPrc); //Prozess-Kette mit aktuellen Variablen
-      end
-    end
-    else xChain(slPrc); //keine Tabelle
   except
     on tLoopError do Tools.ErrorOut(0,cSkp); //Nachricht: Programm Ende
     on tChainError do Tools.ErrorOut(0,cSkp);
@@ -1105,72 +994,45 @@ begin
   end;
 end;
 
-{ stabile Perioden in Zeitreihe suchen }
+{ pCp vergleicht eine Clusterung (mapping) mit einer Referenz auf Pixelebene. }
+{ Die Referenzen müssen mit der Clusterung deckungsgleich sein. Wird eine
+  Vektor-Datei übergeben, transformiert pCp sie in eine passende Raster-Datei.
+  Das Ergebnis sind Tabellen im Text-Format und ein Klassen-Bild mit IDs aus
+  der Referenz. }
+// Vergleich von Zonen-Atributen mit Klassen ergänzt
 
-function tParse._Breaks(iLin:integer; slPrc:tStringList):integer;
+function tParse._Compare(iLin:integer; slPrc:tStringList):integer;
 const
-  cKey = 'pBk: Undefined parameter under "break": ';
+  cKey = 'pCe: Keyword not defined: ';
+  cRfz = 'pCe: Reference format not defined: ';
 var
-  fMax:single=0.5; //maximale Varianz
-  sImg:string=''; //Vorbild
-  sCmd:string=''; //Befehl
+  iSmp:integer=0; //Anzahl Stichproben bei Vergleichen
+  sFld:string=''; //Feldname mit Klassen-Namen aus Vektor-Referenz
+  sRfz:string=''; //Referenz-Klassifikation zum Vergleich mit "cfMap"
   sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
   I:integer;
 begin
   for I:=succ(iLin) to pred(slPrc.Count) do
   begin
-    Result:=I; //aktuelle Zeile
+    Result:=I;
     if not GetParam(slPrc[I],sKey,sVal) then break; //Parameter, Wert
-    if sKey='execute' then sCmd:=sVal else //Befehl
-    if sKey='maximum' then fMax:=StrToFloat(sVal) else //maximale Varianz
-    if sKey='select' then sImg:=wDir(sVal) else //Bilddaten (Zeitverlauf) für Statistik
-      Tools.ErrorOut(2,cKey+sKey); //nicht definierte Eingabe
+    if sKey='reference' then sRfz:=wDir(sVal); //Klassen zum Vergleich mit "sRfz"
+    if sKey='fieldname' then sFld:=sVal else //Feldname in Referenz (nur vektor)
+    if sKey='samples' then iSmp:=StrToInt(sVal) else //Stichproben aus Referenz/Daten
+    Tools.ErrorOut(2,cKey+sKey); //unzulässiger Parameter
   end;
 
-  if sCmd='nochange' then Model._xNoChange(fMax,sImg);
+  if length(sFld)>0 then
+  begin
+    Rank.xVectorReference(sFld,sRfz); //Referenz als Raster-Datei
+    Build.AttributeImage(nil); //Attribute als Raster-Datei
+  end;
+  if iSmp>0
+    then Rank.xDistribution(iSmp) //Feature-Verteilung auf Referenz-Klassen
+    else Rank._xCorrelation(); //Korrelation zwischen Klassen und Referenz
 end;
 
 end.
 
 {==============================================================================}
-
-// für tStringList.CustomSort, Datum "YYYYMMDD" am Ende des Namens
-
-function EndDate(sl:tStringList; i1,i2:integer):integer;
-begin
-  if RightStr(ChangeFileExt(sl[i1],''),8) <
-     RightStr(ChangeFileExt(sl[i2],''),8) then
-     Result:=-1 else
-  if RightStr(ChangeFileExt(sl[i1],''),8) >
-     RightStr(ChangeFileExt(sl[i2],''),8) then
-     Result:=1 else
-  Result:=0
-end;
-
-{ pEF prüft, ob der Rahmen "rFrm" zum Bild "sImg" passt. pEF toleriert dabei
-  Abweichungen bis zu 0.4% die durch Rundungsfehler entstehen können }
-
-function tParse._EqualFrame_(
-  const rFrm:trFrm; //Rahmen für alle Importe
-  sImg:string): //erstes Bild in der Liste
-  boolean; //Bildausschnitt = Rahmen
-var
-  rHdr:trHdr;
-begin
-  Header.Read(rHdr,sImg); //erster Header
-  //Result:=(rHdr.Lon=rFrm.Lft) and (rHdr.Lon+rHdr.Scn*rHdr.Pix=rFrm.Rgt) and (rHdr.Lat=rFrm.Top) and (rHdr.Lat-rHdr.Lin*rHdr.Pix=rFrm.Btm);
-
-  Result:=(round(rHdr.Lon*$FF)=round(rFrm.Lft*$FF))
-    and (round((rHdr.Lon+rHdr.Scn*rHdr.Pix)*$FF)=round(rFrm.Rgt*$FF))
-    and (round(rHdr.Lat*$FF)=round(rFrm.Top*$FF))
-    and (round((rHdr.Lat-rHdr.Lin*rHdr.Pix)*$FF)=round(rFrm.Btm*$FF));
-end;
-
-function tParse._MergeValue(sKey:string):integer;
-begin
-  if sKey='date' then Result:=8 else
-  if sKey='year' then Result:=4 else
-  if sKey='flat' then Result:=1 else
-    Result:=0;
-end;
 
