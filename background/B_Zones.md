@@ -60,12 +60,6 @@ Sie bestehen aus Micro-Catchments, die sich bei der Modellierung bilden. (kleins
 
 The [zones](../manual/7_Zones.md) command saves the *zones* as a raster image *index* in the working directory. *Index* contains the zone ID as the value of the pixels. For further processing size, linking and memory addresses of all *zones* and their contacts to other zones are registered at a database *topology.bit*. This database uses a generic format that supports fast processing.
 
-##############################
-Raster-Version der Zonen
-Definitions-Files der Zonen: Index, index.bit, topology
-~~The internal representation of the [zones](../manual/7_Zones.md) is an image with the zone ID as a value (*~/.imalys/index*), an attribute table (*~/.imalys/index.bit*) and a table of all the links between adjacent zones (*~/.imalys/topology.bit*). In addition the boundaries between the zones are recorded as an ESRI Shape file (*~/.imalys/index.shp*). The [export](../manual/11_Export.md) command can transform the geometry and all attributes to a vector layer. The ending of the *target* filename controls the file format. The *zone* definition files can be saved independently.~~
-##############################
-
 The command also creates an (ESRI) shape file with all *zones* as polygons for convenient evaluation of *zones*. The polygons do not contain any attributes. 
 
 ------
