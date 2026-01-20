@@ -6,7 +6,7 @@
 
 ## 7 Process Chain Variables
 
-The process chain can use variables instead of parameters. A “$” sign followed by a single number will be interpreted as a variable. Variables can be used for different purposes:
+The process chain can use variables instead of parameters. A “$” sign followed by a single number [0 … 9] will be interpreted as a variable. Variables can be used for different purposes:
 
 - Long filenames can be substituted by a short expression
 - All input parameters for a given process chain can be concentrated at the beginning of the process chain
@@ -17,107 +17,141 @@ The process chain can use variables instead of parameters. A “$” sign follow
 
 ### 7a Define variables
 
-Variables must be defined under [replace](../manual/12_Replace.md) at the beginning of the process chain. Each occurance of the variable will be exchanged by the defined string. Variables and constant letters can be mixed as desired.
+Variables must be defined under [replace](../manual/12_Replace.md) at the very beginning of the process chain. Each occurance of the variable will be exchanged by the defined string. Variables and constant letters can be mixed as desired.
 
 ```
-IMALYS [example 7a]
+IMALYS [Tutorial 7a]
 replace
-	$1 = c7106
-	$2 = Leipzig
+	$1 = 2022
+	$2 = 0501
+	$3 = 0731
 home
 	directory = ~/.imalys
 	clear = true
-	log = ~/ESIS/results/$1_$2
+	log = ~/ESIS/results
+import
+	search = ~/ESIS/archives/$1/LC0*.tar
+	period = $1$2 - $1$3
+	...
 ```
 
-will replace the last line with
+will replace the last two lines with
 
 ```
 	...
-	log = ~/results/c7106_Leipzig
+import
+	search = ~/ESIS/archives/2022/LC0*.tar
+	period = 20220501 - 20220731
+	...
 ```
 
-Tutorial 7a shows how a variable definition under *replace* is exchanged in the last command line of the example. Each variable of the whole process chain is replaced in the same way.
+Lesson 7a shows how a variable definition under *replace* id formatted and variables are exchanged with their values. The example is taken from tutorial 2d. Each variable of the whole process chain is replaced in the same way.
 
 ------
 
 ### 7b Repeat a process chain
 
-Variables can also be used to repeat a whole process chain with different inputs and produce corresponding outputs without further interaction. In this case the variables have to be passed as a comma separated list. The process chain will be repeated for each entry in he list. If more than one variable is to be repeated, the lists must contain the same number of entries. Other variables will be exchanged with the same value at all repetitions.
+Variables can also be used to repeat a whole process chain with different inputs and produce corresponding outputs without further interaction. In this case the variables have to be passed as a comma separated list, included in curly brackets. The process chain will be repeated for each entry in he list. If more than one variable is to be repeated, the lists must contain the same number of entries. Other variables will be exchanged with the same value at all repetitions.
 
 ```
-IMALYS [example 7b]
+IMALYS [Tutorial 7b]
 replace
-	$1 = c3542, c3546, c4738, c6730
-	$2 = Berlin-West, Berlin-Mitte, Leipzig, Nürnberg
-	$3 = summer
-home
-	directory = ~/.imalys
-	clear = false
-	log = ~/ESIS/results
-compile
-	search = ~/ESIS/results/$1_$2_$3*.tif
-reduce
-	select = compile
-	execute = bestof
-	preserve = bands
-export
-	select  =  bestof
-	target  =  ~/ESIS/results/$1_$2_$3_2020-2024.tif
-```
-
-Tutorial 7b shows how to repeat a process chain for 4 different cities. The *search* under [compile](../manual/4_Compile.md) specifies the city (name) and the season (summer) but not the year. **The example assumes that image data for the four cities are stored in the *results* folder. These data are NOT included in the tutorial data!** [Reduce](../manual/5_Reduce.md) merges the different years to one multispectral image and [export](../manual/11_Export.md) saves them with a new name.
-
-------
-
-### 7c Combine database and variables
-
-A process chain can include repetition and several processes. In this case different archives are extracted using a *database* and the result is combined to a timeline over 5 years with images of two different seasons.
-
-```
-IMALYS [example 7c]
+	$1 = { 2020, 2021, 2022, 2023, 2024 }
+	$2 = 0501
+	$3 = 0731
 home
 	directory = ~/.imalys
 	clear = true
 	log = ~/ESIS/results
-replace
-	$1 = c7106
-	$2 = Leipzig
-	$3 = 2020, 2021, 2022, 2023, 2024
 import
-	database = ~/ESIS/archives/bonds.csv
-	frame = ~/ESIS/frames/$1.gpkg
-	quality = 0.7
-	bands = _B2, _B3, _B4, _B5, _B6, _B7
-	factor = 2.75e-5
-	offset = -0.2
-compile
-	search = LC0*.hdr
-	period = $30501-$30730
-reduce
-	select = compile
-	execute = bestof
-	preserve = bands
-export
-	select = bestof
-	target = ~/ESIS/results/$1_$2_$3_summer.tif
-compile
-	search = LC0*.hdr
-	period = $30801-$31031
-reduce
-	select = compile
-	execute = bestof
-	preserve = bands
-export
-	select = bestof
-	target = ~/ESIS/results/$1_$2_$3_autumn.tif
+	search = ~/ESIS/archives/$1/LC0*.tar
+	period = $1$2 - $1$3
+	...
 ```
 
-Tutorial 7c shows how to create two seasonal image products from archive data of 5 years. *Database* under [import](../manual/3_Import.md) selects all archives that cover the *Leipzig* map sheet at least partly and show less than 30% cloud cover (*quality = 0.7*). All optical *bands* are selected and calibrated to TOA reflectance (*factor*, *offset*). 
+For the first year of the variable definition of $1 under *replace* the variables under *import* will be replaced as shown below:
 
-The *search* command under [Compile](../manual/4_Compile.md) selects all image scenes with "LC0" at the beginning of the filename regardless of their acquisition date. This includes Landsat-8 ("LC08") and Landsat-9 ("LC09") images. *Period* reduces the result for summer (20200501-20200731). The year is due to the variable *$3* with *2020* in the first run. [Reduce](../manual/5_Reduce.md) combines the images to one multispectral result and [export](../manual/11_Export.md) stores them under a new name. 
+```
+...
+import
+	search = ~/ESIS/archives/2020/LC0*.tar
+	period = 20200501 - 20200731
+	...
+```
 
-The whole process is repeated for the *autumn* season (20200801-20201031) within the process chain. The variable list *$3 = 2020, 2021,…* iterates the process chain for the years 2020 to 2024.
+Tutorial 2b shows how a whole process chain can be repeated for several times with changing values. Imalys runs the whole process chain for each year defined as »$1« under *replace*. The example shows only the beginning of the process chain of [tutorial 2d](2_Images.md).
+
+------
+
+### 7c Concatenate and repeat a process chain
+
+Process chains can be combined as needed. In this example 10 different optimized image products of five different years and two different seasons are produced with the same process chain. 
+
+```
+IMALYS [process chain 7c]
+replace
+	$1 = { 2020, 2021, 2022, 2023, 2024 }
+	$2 = 0501
+	$3 = 0731
+	$4 = 0801
+	$5 = 1031
+home
+	directory = ~/.imalys
+	clear = true
+	log = ~/ESIS/results
+# ------------------------------
+# summer
+# ------------------------------
+import
+	search = ~/ESIS/archives/$1/LC0*.tar
+	period = $1$2 - $1$3
+	frame = ~/ESIS/frames/bounding-box.shp
+	bands = B2, B3, B4, B5, B6, B7
+	factor = 2.75e-5
+	offset = -0.2
+	quality = true
+	nodata=0
+compile
+	search = LS*.hdr
+	crsystem = 32632
+	pixel = 30
+	frame = ~/ESIS/frames/bounding-box.shp
+reduce
+	select = compile
+	execute = bestof
+	retain = bands
+export
+	select = bestof
+	target = ~/ESIS/results/bestof_$1$2-$1$3.tif
+# ------------------------------
+# autumn
+# ------------------------------
+import
+	search = ~/ESIS/archives/$1/LC0*.tar
+	period = $1$4 - $1$5
+	frame = ~/ESIS/frames/bounding-box.shp
+	bands = B2, B3, B4, B5, B6, B7
+	factor = 2.75e-5
+	offset = -0.2
+	quality = true
+	nodata=0
+compile
+	search = LS*.hdr
+	crsystem = 32632
+	pixel = 30
+	frame = ~/ESIS/frames/bounding-box.shp
+reduce
+	select = compile
+	execute = bestof
+	retain = bands
+export
+	select = bestof
+	target = ~/ESIS/results/bestof_$1$4-$1$5.tif
+```
+
+Tutorial 7c shows how to concatenate and repeat a process chain different years and seasons. The *search* under [compile](../manual/4_Compile.md) specifies the year, two calls of almost the same process chain differentiate between summer and autumn. The '#' sign is used to include comments. Except the different years, the example is taken from [tutorial 2d](2_Images.md). **The example assumes that image data of the five years are stored in the "archives" folder. These images are NOT included in the tutorial data!** 
+
+------
 
 [Top](7_Variables.md)
 
