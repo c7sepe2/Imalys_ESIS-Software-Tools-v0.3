@@ -50,12 +50,6 @@ Standard kernel processes combine all pixels in a small window into a new value 
 
 ------
 
-### Hydrological zones
-
-Sie bestehen aus Micro-Catchments, die sich bei der Modellierung bilden. (kleinste in sich geschlossene Einzugsgebiete) 
-
-------
-
 ### Image and vector formats
 
 The [zones](../manual/7_Zones.md) command saves the *zones* as a raster image *index* in the working directory. *Index* contains the zone ID as the value of the pixels. For further processing size, linking and memory addresses of all *zones* and their contacts to other zones are registered at a database *topology.bit*. This database uses a generic format that supports fast processing.
