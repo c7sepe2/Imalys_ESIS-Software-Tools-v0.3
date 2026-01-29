@@ -46,6 +46,7 @@ type
       procedure _ExportMapping(sTrg:string);
       procedure ExportZones(sSrc,sTrg:string);
       function Features(iLin:integer; slPrc:tStringList):integer;
+      procedure FilterDate(slImg:tStringList; sPrd:string);
       function Flatten(iLin:integer; slPrc:tStringList):integer;
       function Focus(iLin:integer; slPrc:tStringList):integer;
       function GetParam(sLin:string; var sKey,sVal:string):boolean;
@@ -511,6 +512,35 @@ begin
     end;
 end;
 
+{ pFD entfernt aus der Liste "slImg" alle Dateinamen, die ein Datum enthalten
+  das NICHT zum Intervall sPrd [YYYYMMDD-YYYYMMDD] passt. Namen ohe Datum
+  bleiben erhalten. }
+
+procedure tParse.FilterDate(
+  slImg:tStringList; //Dateinamen-Liste, WIRD GEFILTERT
+  sPrd:string); //Datum von-bis [YYYYMMDD - YYYYMMDD]
+const
+  cCnt='pFD: No image fits passed time period: ';
+  cPrd='pFD: Time period must be passed as [YYYYMMDD] - [YYYYMMDD]: ';
+var
+  iDat:integer; //Datum im Dateinamen als Zahl
+  iHig,iLow:integer; //letztes, erstes Datum aus "sPrd"
+  I:integer;
+begin
+  if (TryStrToInt(LeftStr(sPrd,8),iLow)=False)
+  or (TryStrToInt(RightStr(sPrd,8),iHig)=False) then
+    Tools.ErrorOut(3,cPrd+sPrd);
+  for I:=pred(slImg.Count) downto 0 do
+    if TryStrToInt(RightStr(ChangeFileExt(slImg[I],''),8),iDat) then //Datum am Ende des Dateinamens
+      if (iDat<iLow) or (iDat>iHig) then //Datum außerhalb der Schwellen
+        slImg.Delete(I); //Name aus Liste entfernen
+  if slImg.Count<1 then Tools.ErrorOut(2,cCnt+sPrd);
+end;
+
+//
+//Archive.CheckPeriod(... ist komplex
+
+
 { pCp kombiniert allen gewählten Bilder zu einem Stack. Dabei können Kanäle,
   CRS, Pixelgröße, der NoData-Wert und der Ausschnitt gewählt werden. Leere
   Bereiche werden auf NaN gesetzt }
@@ -539,6 +569,7 @@ var
   sArt:string=''; //Kanäle extrahieren von .. bis als BX:BY.
   sFrm:string=''; //Dateiname geometrie mit Bounding-Box = ROI
   sNme:string=''; //Kanal-Namen als CSV Liste
+  sPrd:string=''; //Periode aus zwei Datums-Angaben [YYYYMMDD-YYYYMMDD]
   sTrg:string=''; //Ergebnis-Vorgabe
   slImg:tStringList=nil; //Kanal-Namen
   sKey,sVal:string; //linke, rechte Hälfte der Parameter-Zeile
@@ -559,6 +590,7 @@ begin
         if sKey='merge' then bMrg:=sVal='true' else //Kanäle mit gleichem Datum überschreiben
         if sKey='names' then sNme:=sVal else //Kanalnamen [CSV] übernehmen
         if sKey='nodata' then fNod:=StrToFloat(sVal) else //NoData im Vorbild
+        if sKey='period' then sPrd:=sVal else //Datums-Periode
         if sKey='pixel' then iPix:=StrToInt(sVal) else //Pixelgröße [m]
         if sKey='search' then slImg.AddStrings(Search(wDir(sVal))) else //Dateinamen-Filter
         if sKey='select' then slImg.Add(wDir(sVal)) else //Dateinamen explizit übernehmen
@@ -566,9 +598,9 @@ begin
           Tools.ErrorOut(2,cCmd+sKey) //nicht definierte Eingabe
       end;
 
-      //slImg.Count=0?
       if CheckInput(slImg)=False then Tools.ErrorOut(3,cImg); //Eingabe nicht definiert?
       if sTrg='' then sTrg:=eeHme+'compile'; // Vorgabe für Ergebnis verwenden
+      if sPrd<>'' then FilterDate(slImg,sPrd); //Datum filtern (letzte 8 Buchstaben)
       if (iEpg>0) or (iPix>0) or (sFrm<>'') or CheckExtern(slImg) then //Transformationen, falsches Format
       begin
         Archive.xImageImport(iEpg,iPix,sArt,sFrm,slImg); //ENVI-Format, projizieren, Rahmen, Kanäle als "c_Name.."
@@ -576,7 +608,7 @@ begin
           then Archive.xMergeBands(sTrg,slImg) //Kanäle mit gleichem Datum vereinigen, Stack
           else Image.xStackImages(sArt,sTrg,slImg); //Bilder als Stack
       end
-      else Image.xStackImages(sArt,sTrg,slImg); //Bilder als Stack
+      else Image.xStackImages(sArt,sTrg,slImg); //Bilder als Stack, auch umbenennen
       if length(sNme)>0 then Header.BandNames(sNme,sTrg); //Kanalnamen überschreiben
       if bClp then Cover.xClipToShape(sFrm,sTrg); //auf Frame zuschneiden
       if not isNan(fNod) then Filter.xSetNodata(fNod,sTrg); //NoData anpassen
@@ -670,10 +702,13 @@ begin
       if FileExists(ChangeFileExt(sMsk,cfBit)) then _ImportMapping(sMsk) else //Klassen-Defintion + Bild
       begin
         cSns:=_SensorType(sMsk); //Sensor-ID
-{ TODO: "search" mit einem, volständig bezeichnetem Archiv testen }
         if cSns=1
           then slArc:=Archive.xSelectLandsat(bQlt,sMsk,sBnd,sPrd,sTls) //gewählte Archive, Kanäle extrahieren
           else slArc:=Archive.xSelectSentinel(sMsk,sBnd,sPrd,sTls); //Verzeichnisse mit Rohdaten, nur gewählte Kanäle
+{ todo: Die Kachel-ID muss manuell eingegeben werden. Für Landsat-4-9 und
+        Sentinel-2 gbt es die Grenzen aller Kacheln als Vektor-Layer. Ein GIS-
+        Verschnitt kann die passenden Kacheln zum gewählten Frame finden
+        → Vector.Konzept}
         for I:=0 to pred(slArc.Count) do
         begin //Bilder aus gewählten Kanälen
           if bQlt and (cSns=1) then
