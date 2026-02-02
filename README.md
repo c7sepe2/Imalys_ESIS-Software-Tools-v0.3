@@ -117,10 +117,11 @@ If Imalys is advancing your research, please cite as:
 [Top](README.md#Imalys)
 
 -----------------
+
 <a href="https://www.ufz.de/index.php?en=33573">
-    <img src="https://git.ufz.de/rdm-software/saqc/raw/develop/docs/resources/images/representative/UFZLogo.png" width="400"/>
+    <img src="https://www.ufz.de/static/custom/weblayout/DefaultInternetLayout/img/logos/ufz_transparent_en_blue@2x.png" width="400"/>
 </a>
 
 <a href="https://www.ufz.de/index.php?en=45348">
-    <img src="https://git.ufz.de/rdm-software/saqc/raw/develop/docs/resources/images/representative/RDMLogo.png" align="right" width="220"/>
+    <img src="https://www.ufz.de/export/data/2/256980_E0_header%20(Custom).png" align="right" width="300"/>
 </a>
