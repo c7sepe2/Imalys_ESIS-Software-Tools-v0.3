@@ -2,6 +2,21 @@
 
 ------
 
+## Install executable files
+
+All commands and processes of *Imalys* are compiled into one executable file [xImalys](../../binaries). *xImalys* does not need to be installed. It is sufficient to copy *xImalys* to your *usr/local/bin* directory. You will need administrative rights to copy it. The *usr/local/bin* directory is not included into the package system.
+
+ - download *xImalys* from the *binaries* folder
+ - copy *xImalys* to your /usr/local/bin directory
+
+```
+sudo cp ~/downloads/xImalys usr/local/bin
+```
+
+If you prefer to install the executable files to a subdirectory of your */usr/local/bin* do not forget to extend your environment for the selected path.
+
+Imalys uses the *GDAL library* of the [Open Source Geospatial Foundation](https://www.osgeo.org/) for a lot of processes. This library must be installed under */usr/bin*. For many Linux distributions the GDAL library is installed by default. Alternatively GDAL can be installed from [GitHub](https://github.com/OSGeo/GDAL). If you run QuantumGis the GDAL library is installed in any case.
+
 ## Run Imalys
 
 Imalys is designed to translate traits defined for ESIS into standard and well-defined data products. To this end, Imalys contains commands and functions that allow extensive analysis and transformation of image and vector data, as in a GIS system. However, Imalys is not controlled via a user interface but with console commands. 
@@ -32,16 +47,20 @@ home
 #	comment ...
 #	––––––––––––––––––––––––––––––––––––––––
 compile
-	search = ~/ESIS/Takes/*c7934*2022*.tif
+	search = ~/ESIS/Takes/LC*_193026_2025*.tif
 reduce
 	select = compile
 	execute = bestof
 	retain = bands
 export
 	select = bestof
-	target = ~/ESIS/Results/c7934_Munich_2022.tif
+	target = ~/ESIS/Results/Munich_2025.tif
 ```
 
-The example combines all images with *c7934* and *2022* as part of the filename (*search =* ) into one optimized multispectral image of Munich (*execute = bestof*) from the year 2022. The working directory is set to default (*directory = ~/.imalys*), the directory is emptied at the beginning (*clear = true*), the logs (*log =* …) and the results (*target =* …) are saved at the same place (*~/ESIS/results*).
+The example combines all Landsat image tiles "193026" of the year *2025* stored at "ESIS/Takes" into one optimized multispectral image "Munich_2025. The city of Munich is located at the Landsat tile 193026. *Execute = bestof* calculates a result image with the most typical colors for the selected time period (see [reduce](5_Reduce.md)). 
+
+The working directory is set to default (*directory = ~/.imalys*), the directory is emptied at the beginning (*clear = true*), the logs (*log =* …) and the results (*target =* …) are saved at the same place (*~/ESIS/results*).
+
+------
 
 [Top](1_Execute.md)
